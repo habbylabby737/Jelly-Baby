@@ -4,6 +4,9 @@ import { FacilityAudio, FacilityMotionSound, makeFacilitySample } from '../src/g
 const events=[],motion=new FacilityMotionSound(event=>events.push(event),{x:0,y:0,z:0});
 for(let i=0;i<240;i++)motion.swing(1/240,0,0,false);
 assert.equal(events.length,0,'stationary equipment is silent');
+motion.reset();events.length=0;
+for(let i=0;i<240*2;i++)motion.swing(1/240,.8,.018*Math.sin(i/240*8),false);
+assert.equal(events.length,0,'a high seat held against the swing does not creak from speed jitter');
 for(let i=0;i<240*6;i++) {
   const t=i/240;
   motion.swing(1/240,.7*Math.sin(4*t),2.8*Math.cos(4*t),true);

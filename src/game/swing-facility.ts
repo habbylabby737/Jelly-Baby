@@ -18,6 +18,7 @@ export class SwingFacility implements Facility {
   private readonly visual=new Swing();
   private readonly collision:FacilityCollision;
   private laughStarted=false;
+  private laughBeyondThreshold=false;
   private readonly audio:FacilityMotionSound;
   constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,sound:FacilitySoundSink=()=>{}) {
     this.collision=new FacilityCollision(body);
@@ -35,15 +36,21 @@ export class SwingFacility implements Facility {
   }
   interact() {
     const changed=this.physics.toggle();
-    if(changed)this.laughStarted=false;
+    if(changed) {
+      this.laughStarted=false;
+      this.laughBeyondThreshold=this.physics.riding&&Math.abs(this.physics.angle)>=LAUGH_ANGLE;
+    }
     return changed;
   }
   step(h:number) {
     this.physics.step(h);
     this.audio.swing(h,this.physics.angle,this.physics.speed,this.active);
-    // Remember the first substantial arc so the face stays joyful through
-    // subsequent bottom crossings. Each new ride starts with the resting face.
-    if(this.active&&Math.abs(this.physics.angle)>=LAUGH_ANGLE)this.laughStarted=true;
+    // Remember only a threshold crossing that happens during this ride. If an
+    // empty swing was already beyond the threshold when the jelly boards, it
+    // must first return inside the normal-expression range before laughing.
+    const beyondThreshold=Math.abs(this.physics.angle)>=LAUGH_ANGLE;
+    if(this.active&&!this.laughBeyondThreshold&&beyondThreshold)this.laughStarted=true;
+    this.laughBeyondThreshold=this.active&&beyondThreshold;
   }
   afterStep() {
     if(this.active)return;
@@ -55,6 +62,6 @@ export class SwingFacility implements Facility {
     this.collision.resolveBoxes(this.visual.collisionBoxes);
   }
   update() {this.visual.update(this.physics.angle,this.physics.seatCollisionMotion);}
-  reset() {this.audio.reset();this.laughStarted=false;this.physics.reset();this.update();}
+  reset() {this.audio.reset();this.laughStarted=false;this.laughBeyondThreshold=false;this.physics.reset();this.update();}
   dispose() {this.visual.group.removeFromParent();this.visual.dispose();}
 }

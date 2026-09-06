@@ -136,7 +136,10 @@ listener follows the camera and stores its right vector for facility panning.
 Facility audio is event-driven by fixed-step motion, not a free-running loop.
 [`FacilityMotionSound`](../src/game/facility-sound.ts) detects swing reversals,
 bottom crossings, trampoline landings, and spring recovery, with per-kind
-cooldowns. `FacilityAudio` turns those events into deterministic cached PCM
+cooldowns. Swing creaks use meaningful angular speed and the incoming speed
+peak at a reversal rather than absolute seat angle, so a seat held high remains
+quiet. Center-crossing air sounds also require a real crossing with meaningful
+speed. `FacilityAudio` turns those events into deterministic cached PCM
 variants, attenuates them by distance, pans them in stereo, keeps at most six
 voices, and ignores facilities farther than `.9` m.
 

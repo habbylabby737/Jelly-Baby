@@ -45,6 +45,25 @@ assert(crossedThreshold&&ridingFace.laugh>.99,'large arcs transition to sustaine
 assert(facility.interact()&&!swing.riding,'same action dismounts');
 assert(!facility.laughing,'dismount clears the laughter trigger');
 assert(body.center.x>SWING.x+.10,'dismount clears the swept seat');
+// Boarding must not inherit laughter just because an empty swing was already
+// moving beyond the expression threshold.
+body.grounded=true;body.grab=null;
+swing.angle=.5;swing.speed=.7;facility.step(PHYS.step);
+assert(facility.interact(),'board a swing that was already moving');
+assert(!facility.laughing,'moving-swing boarding starts with the normal expression');
+const movingRideFace=new FaceExpression();let returnedInside=false,laughedAfterCrossing=false;
+for(let i=0;i<240*8;i++) {
+  facility.step(PHYS.step);body.step(PHYS.step);
+  const beyond=Math.abs(swing.angle)>=15*Math.PI/180;
+  returnedInside ||= !beyond;
+  if(returnedInside&&facility.laughing)laughedAfterCrossing=true;
+  movingRideFace.update(PHYS.step,false,facility.laughing);
+  if(!facility.laughing)assert.equal(movingRideFace.laugh,0,'normal expression remains normal before a threshold crossing');
+  if(laughedAfterCrossing)break;
+}
+assert(returnedInside,'moving swing returns to the normal-expression range');
+assert(laughedAfterCrossing,'moving-swing ride laughs only after crossing the threshold');
+assert(facility.interact()&&!facility.laughing,'second ride dismount clears the laughter trigger');
 const energy=()=>.5*swing.speed**2+PHYS.gravity/SWING.length*(1-Math.cos(swing.angle));
 const before=energy();for(let i=0;i<240*8;i++)swing.step(PHYS.step);
 assert(energy()<before*.4,'empty swing coasts and dissipates energy');

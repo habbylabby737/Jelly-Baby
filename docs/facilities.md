@@ -86,8 +86,11 @@ deformed body surface and removes inward velocity so a walking body cannot
 ghost through the structure.
 
 The normal face blinks during the gentle initial ride. Once the swing crosses
-15°, `laughStarted` becomes true and laughter remains active for the rest of
-that ride. Reset and dismount clear it.
+15° during the current ride, `laughStarted` becomes true and laughter remains
+active for the rest of that ride. Boarding an empty swing that is already
+beyond 15° does not inherit laughter: the seat must first return inside the
+normal-expression range and cross the threshold again. Reset and dismount
+clear it.
 
 ## Trampoline
 

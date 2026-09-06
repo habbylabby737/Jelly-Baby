@@ -106,9 +106,10 @@ finite view thickness, and constructs the GPU caustic graph and its targets.
 
 [`scripts/verify-swing.mjs`](../scripts/verify-swing.mjs) checks approach-radius
 boarding, seat support, gradual energy pumping, bounded angle, volume retention,
-normal blinking, laughter threshold/persistence, dismount placement, empty
-swing decay, grab exclusion, reset, and the manager's nearest-candidate and
-exclusive-owner rules.
+normal blinking, per-ride laughter threshold/persistence (including boarding
+an already-moving swing), dismount placement, empty swing decay, grab
+exclusion, reset, and the manager's nearest-candidate and exclusive-owner
+rules.
 
 [`scripts/verify-trampoline.mjs`](../scripts/verify-trampoline.mjs) exercises
 the trampoline's approach and boarding rules, supported compression, rebound

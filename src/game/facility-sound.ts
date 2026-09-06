@@ -2,12 +2,18 @@ export type FacilitySoundKind='swing-creak'|'swing-air'|'trampoline-land'|'tramp
 export type FacilitySoundEvent={kind:FacilitySoundKind;strength:number;x:number;y:number;z:number};
 export type FacilitySoundSink=(event:FacilitySoundEvent)=>void;
 
+const SWING_MOTION_THRESHOLD=.03;
+const SWING_IDLE_RESET=.28;
+const SWING_CENTER_EPSILON=.004;
+
 /** Event timing comes from fixed physics steps; no free-running audio loop. */
 export class FacilityMotionSound {
   private time=0;
   private readonly lastSound=new Map<FacilitySoundKind,number>();
-  private lastAngle=0;
-  private lastSpeed=0;
+  private swingCenterSide=0;
+  private swingDirection=0;
+  private swingPeakSpeed=0;
+  private swingIdleTime=0;
   private supported=true;
   private compression=0;
   private recovering=false;
@@ -20,10 +26,29 @@ export class FacilityMotionSound {
   }
   swing(h:number,angle:number,speed:number,loaded:boolean) {
     this.time+=h;
-    const weight=loaded?1:.45;
-    if(speed*this.lastSpeed<0&&Math.abs(angle)>.035)this.play('swing-creak',Math.abs(angle)/.85*weight);
-    if(angle*this.lastAngle<0&&Math.abs(speed)>.18)this.play('swing-air',Math.abs(speed)/3.6*weight);
-    this.lastAngle=angle;this.lastSpeed=speed;
+    const weight=loaded?1:.45,magnitude=Math.abs(speed);
+    if(magnitude>SWING_MOTION_THRESHOLD) {
+      const direction=Math.sign(speed);this.swingIdleTime=0;
+      if(this.swingDirection===0) {
+        this.swingDirection=direction;this.swingPeakSpeed=magnitude;
+      } else if(direction!==this.swingDirection) {
+        // A creak is caused by the speed that is actually being arrested at
+        // the reversal, not by how high the seat happens to be.
+        this.play('swing-creak',this.swingPeakSpeed/3.6*weight);
+        this.swingDirection=direction;this.swingPeakSpeed=magnitude;
+      } else this.swingPeakSpeed=Math.max(this.swingPeakSpeed,magnitude);
+    } else {
+      this.swingIdleTime+=h;
+      if(this.swingIdleTime>SWING_IDLE_RESET) {
+        this.swingDirection=0;this.swingPeakSpeed=0;
+      }
+    }
+    let centerSide=this.swingCenterSide;
+    if(angle>SWING_CENTER_EPSILON)centerSide=1;
+    else if(angle<-SWING_CENTER_EPSILON)centerSide=-1;
+    const crossedCenter=centerSide!==0&&this.swingCenterSide!==0&&centerSide!==this.swingCenterSide;
+    if(crossedCenter&&magnitude>.18)this.play('swing-air',magnitude/3.6*weight);
+    this.swingCenterSide=centerSide;
   }
   trampoline(h:number,supported:boolean,speed:number,compression:number,active:boolean) {
     this.time+=h;
@@ -35,7 +60,7 @@ export class FacilityMotionSound {
     } else this.recovering=false;
     this.supported=supported;this.compression=compression;
   }
-  reset() {this.time=0;this.lastSound.clear();this.lastAngle=0;this.lastSpeed=0;this.supported=true;this.compression=0;this.recovering=false;}
+  reset() {this.time=0;this.lastSound.clear();this.swingCenterSide=0;this.swingDirection=0;this.swingPeakSpeed=0;this.swingIdleTime=0;this.supported=true;this.compression=0;this.recovering=false;}
 }
 
 /** Short physical textures: friction-excited resonances and damped fabric/steel.
