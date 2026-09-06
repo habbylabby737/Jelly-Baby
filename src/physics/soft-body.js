@@ -4,6 +4,7 @@ import { BufferAttribute, DynamicDrawUsage, Vector3 } from 'three/webgpu';
 import { createSoftBodyKernel } from './soft-body-kernel.js';
 import { deformSurface } from './deform-surface.js';
 import { PHYS, clamp } from './constants.js';
+import { OrientationSafety, ORIENTATION_REPAIR_PASSES } from './orientation-safety.js';
 
 export function determinant(a,b,c,d,e,f,g,h,i) {
   return a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
@@ -28,6 +29,7 @@ export class SoftBody {
     this.center=new Vector3();this.surface=cage.surface;
     this.sleeping=false;this.canSleep=true;this.quietTime=0;this.grounded=false;
     this.surfaceDirty=true;this.surfaceRevision=0;this.limitedSteps=0;this.lastMinJacobian=1;this.stepFraction=1;
+    this.orientationSafety=null;this.guardedSteps=0;
     const uniqueEdges=new Set();
     for(let t=0;t<cage.tets.length;t++) {
       const ids=cage.tets[t],offsets=ids.map(v=>v*3),[a,b,c,d]=offsets,p=this.rest;
@@ -163,12 +165,13 @@ export class SoftBody {
     scale=w[id]*dl;x[d]+=scale*gdx;x[d+1]+=scale*gdy;x[d+2]+=scale*gdz;
     return J;
   }
-  repairOrientation() {
-    for(let pass=0;pass<256;pass++) {
+  repairOrientation(previous=this.previous) {
+    for(let pass=0;pass<ORIENTATION_REPAIR_PASSES;pass++) {
       let minimum=Infinity,worst=null;
       for(const e of this.elements) {
         const a=e.offsets[0],b=e.offsets[1],c=e.offsets[2],d=e.offsets[3],x=this.x;
-        const J=determinant(x[b]-x[a],x[c]-x[a],x[d]-x[a],x[b+1]-x[a+1],x[c+1]-x[a+1],x[d+1]-x[a+1],x[b+2]-x[a+2],x[c+2]-x[a+2],x[d+2]-x[a+2])*e.inverseRestDet;
+        const rawJ=determinant(x[b]-x[a],x[c]-x[a],x[d]-x[a],x[b+1]-x[a+1],x[c+1]-x[a+1],x[d+1]-x[a+1],x[b+2]-x[a+2],x[c+2]-x[a+2],x[d+2]-x[a+2])*e.inverseRestDet;
+        const J=Number.isFinite(rawJ)?rawJ:-Infinity;
         if(J<minimum){minimum=J;worst=e;}
       }
       if(minimum>=.135||!worst)return minimum;
@@ -176,7 +179,7 @@ export class SoftBody {
       const a=worst.offsets[0],b=worst.offsets[1],c=worst.offsets[2],d=worst.offsets[3],x=this.x;
       const after=determinant(x[b]-x[a],x[c]-x[a],x[d]-x[a],x[b+1]-x[a+1],x[c+1]-x[a+1],x[d+1]-x[a+1],x[b+2]-x[a+2],x[c+2]-x[a+2],x[d+2]-x[a+2])*worst.inverseRestDet;
       if(!(after>before+1e-10))for(const id of worst.ids)for(let axis=0;axis<3;axis++) {
-        const i=id*3+axis;this.x[i]=.5*(this.x[i]+this.previous[i]);
+        const i=id*3+axis;this.x[i]=.5*(this.x[i]+previous[i]);
       }
     }
     return this.minimumJacobian();
@@ -186,32 +189,29 @@ export class SoftBody {
     for(const e of this.elements){
       const a=e.offsets[0],b=e.offsets[1],c=e.offsets[2],d=e.offsets[3];
       const J=determinant(x[b]-x[a],x[c]-x[a],x[d]-x[a],x[b+1]-x[a+1],x[c+1]-x[a+1],x[d+1]-x[a+1],x[b+2]-x[a+2],x[c+2]-x[a+2],x[d+2]-x[a+2])*e.inverseRestDet;
+      if(!Number.isFinite(J))return -Infinity;
       minimum=Math.min(minimum,J);if(minimum<stopAt)return minimum;
     }
     return minimum;
   }
-  preserveOrientation() {
+  preserveOrientation(previous=this.previous) {
+    const safety=this.orientationSafety??=new OrientationSafety(this);
     this.stepFraction=1;
     this.lastMinJacobian=this.minimumJacobian(.12);
-    if(this.lastMinJacobian>=.12)return 1;
-    this.limitedSteps++;this.lastMinJacobian=this.repairOrientation();
-    // Pathological clusters fall back locally toward the previous valid state.
-    // The rest of the body still advances the full 1/240 s timestep.
-    for(let pass=0;this.lastMinJacobian<.12&&pass<256;pass++) {
-      let minimum=Infinity,worst=null;
-      for(const e of this.elements) {
-        const a=e.offsets[0],b=e.offsets[1],c=e.offsets[2],d=e.offsets[3],x=this.x;
-        const J=determinant(x[b]-x[a],x[c]-x[a],x[d]-x[a],x[b+1]-x[a+1],x[c+1]-x[a+1],x[d+1]-x[a+1],x[b+2]-x[a+2],x[c+2]-x[a+2],x[d+2]-x[a+2])*e.inverseRestDet;
-        if(J<minimum){minimum=J;worst=e;}
-      }
-      if(!worst)break;
-      for(const id of worst.ids)for(let axis=0;axis<3;axis++) {
-        const i=id*3+axis;this.x[i]=.5*(this.x[i]+this.previous[i]);
-      }
-      this.lastMinJacobian=this.repairOrientation();
+    if(this.lastMinJacobian<.12) {
+      this.limitedSteps++;this.lastMinJacobian=this.repairOrientation(previous);
+      if(this.lastMinJacobian<.12){this.guardedSteps++;this.lastMinJacobian=safety.accept(previous);}
     }
-    this.lastMinJacobian=this.minimumJacobian();
+    safety.capture();
     return 1;
+  }
+
+  // Facility contacts run after the solver and must obey the same acceptance
+  // rule before their edited positions reach rendering or the next fixed step.
+  stabilizeContacts() {
+    if(!this.kernel){this.preserveOrientation(this.orientationSafety?.safe??this.rest);return;}
+    this.kernel.stabilizeContacts(PHYS.floor);
+    const meta=this.kernel.meta;this.lastMinJacobian=meta[1];this.limitedSteps+=meta[2];this.guardedSteps+=meta[15];
   }
 
   step(h) {
@@ -219,6 +219,7 @@ export class SoftBody {
     if(this.grab)this.wake();if(this.sleeping)return false;
     this.kernel.step(h,PHYS);
     const meta=this.kernel.meta;this.grounded=meta[0]!==0;this.lastMinJacobian=meta[1];this.limitedSteps+=meta[2];this.stepFraction=meta[14];
+    this.guardedSteps+=meta[15];
     this.center.set(meta[3],meta[4],meta[5]);
     for(const grab of this.grabs) {
       const point=grab.point;point.set(0,0,0);
@@ -315,7 +316,7 @@ export class SoftBody {
     let volume=0;for(const e of this.elements)volume+=matrixDet(this.deformation(e))*e.volume;return volume/this.cage.totalVolume;
   }
   wake(){this.sleeping=false;this.quietTime=0;}
-  reset(){this.x.set(this.rest);this.previous.set(this.rest);this.velocity.fill(0);this.grab=null;this.grounded=false;this.stepFraction=1;if(this.kernel)this.kernel.meta[14]=1;this.wake();this.updateSurface();}
+  reset(){this.x.set(this.rest);this.previous.set(this.rest);this.orientationSafety?.capture();this.velocity.fill(0);this.grab=null;this.grounded=false;this.stepFraction=1;if(this.kernel)this.kernel.meta[14]=1;this.wake();this.updateSurface();}
   nudge(){this.wake();for(let i=0;i<this.mass.length;i++){const j=i*3;this.velocity[j]+=.095+(this.x[j+1]-this.center.y)*3;this.velocity[j+1]+=.12;this.velocity[j+2]+=.025;}}
   isFinite(){for(let i=0;i<this.x.length;i++)if(!Number.isFinite(this.x[i])||!Number.isFinite(this.velocity[i])||Math.abs(this.x[i])>100000)return false;return true;}
 }

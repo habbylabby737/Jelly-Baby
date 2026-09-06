@@ -77,8 +77,8 @@ velocities in `Float64Array`s. For each fixed step, the JavaScript path:
 4. solves the coupled elastic distortion and hydrostatic constraints, then the
    orientation barrier, grabs, and floor contacts;
 5. applies floor friction from the solved tangential displacement;
-6. repairs any element whose normalized determinant falls below the orientation
-   threshold, without shrinking the global timestep;
+6. runs bounded orientation repair, then accepts only admissible nodal motion if
+   the candidate still violates the orientation threshold, without shrinking the timestep;
 7. reconstructs velocity from the corrected position delta and applies a small
    impact response when a contact arrived with meaningful downward speed;
 8. applies equal-and-opposite axial viscosity along unique cage edges; and
@@ -93,9 +93,9 @@ W = μ/2 (||F||² − 3) + K/2 (J − 1 − μ/K)²
 
 Solving distortion and volume as a coupled two-constraint system makes the
 identity deformation force-free. The separate orientation barrier prevents an
-element from inverting. If projection stalls, only the affected tetrahedral
-cluster is moved partway toward the previous valid state; the rest of the body
-still consumes the complete 1/240-second step.
+element from inverting. Difficult candidates use the bounded acceptance rule
+below; a failed repair is never accepted as the next recovery reference. The
+body still consumes the complete 1/240-second step.
 
 The solver has no self-collision or tearing. This is an intentional bounded
 soft-body model, not a general-purpose deformable-material package.
@@ -121,6 +121,51 @@ the same equations and public behavior.
 The kernel reserves capacity for 16 simultaneous grabs. The input layer uses the
 same capacity check before creating a grip, so the fallback and accelerated
 paths have the same interaction limit.
+
+### Bounded recovery under violent grabs
+
+Opposing grabs and abrupt shaking can drive many elements through the orientation
+barrier. The original nested recovery could run over 65,000 corrections in one
+substep and still return an inverted cage. That result then became the next
+"previous valid" reference, causing progressive collapse and persistent repair
+work after release. A real three-pointer replay with frame-held commands at
+30 Hz reproduced this in both the original kernel and its indexed optimization.
+
+The native kernel builds a tournament tree of element Jacobians when a step
+needs repair. A static node-to-element adjacency list identifies every
+tetrahedron touching the four corrected nodes. After projection or local blending,
+only those Jacobians are recalculated, once each, and their tree paths refreshed.
+The next worst element is available at the root. Equal minima select the lowest
+element index, matching the original strict-comparison scan exactly.
+
+Local projection is capped at 32 corrections. If it still leaves a determinant
+below `.12`, the solver starts from a validated reference and makes two
+forward/reverse sweeps toward the proposed pose, moving one node at a time.
+Each incident tetrahedron's determinant is linear in that single-node motion,
+so its admissible fraction is calculated directly. A small margin keeps the
+result away from the boundary. This gives fixed work even when many constraints
+conflict, instead of starting another repair loop.
+
+The solved mass-center displacement is preserved, with a rigid upward correction
+only where necessary for floor clearance. Independent nodes can continue moving;
+neither the timestep nor the pointer command is rewound. Only a validated result
+is saved for subsequent recovery. Facility contacts apply the same rule after
+their positional corrections, before those edits reach rendering or another step.
+
+The index is rebuilt for each repair call; it is never trusted across external
+position edits. Scratch and the saved valid cage are allocated once within the
+existing 16 MiB WASM memory. The JavaScript fallback uses the same bounded
+acceptance rule. Ordinary elastic/contact arithmetic, material parameters,
+force caps, input response and full-resolution surface embedding are unchanged.
+Extreme candidates that previously exhausted recovery now have a defined,
+admissible outcome.
+
+`test:orientation` checks native index/scan agreement under this bounded policy
+and a deterministic per-substep work ceiling. `test:deformation` uses the actual
+input handlers and fixed-step clock at 20, 30 and 60 Hz, checking sustained
+multi-grab motion, volume, orientation, release recovery and eventual sleep.
+Frame-held input and post-release recovery are essential: a short replay that
+retargets every physics substep can miss the collapse entirely.
 
 ## Surface embedding
 

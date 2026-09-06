@@ -56,6 +56,12 @@ falls back to the JavaScript solver if that instantiation is unavailable.
 The C source is not a separate physics design. It is the tight-loop execution
 version of the JavaScript solver's model semantics and data layout.
 
+Rebuilding or running `test:orientation` requires a clang with the wasm32 backend
+and `wasm-ld` (for example, WASI SDK). Set `CLANG` to that compiler's path if the
+default compiler lacks WebAssembly support; Apple's system clang may lack it.
+`scripts/compile-kernel.mjs` shares the compiler flags between generation and
+native equivalence verification, invoking the compiler through interactive zsh.
+
 ## Package commands
 
 The scripts in `package.json` are the supported entry points:
@@ -76,6 +82,8 @@ The scripts in `package.json` are the supported entry points:
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
 | `npm run test:facility-sound` | Verify motion-event timing and procedural audio. |
 | `npm run test:multitouch` | Verify simultaneous grips and cleanup paths. |
+| `npm run test:orientation` | Compile and compare indexed repair with full-scan native repair; requires a WASM-capable clang. |
+| `npm run test:deformation` | Verify sustained frame-cadenced multi-drag, bounded recovery, volume, release/sleep and post-solver contacts. |
 | `npm run test:performance` | Verify bounded stepping and optimized data paths. |
 | `npm run benchmark` | Intended to print CPU timings for walking and severe stretching; currently stale. |
 
@@ -146,6 +154,26 @@ distance/suspension filtering, six-voice limits, cached buffers, and cleanup.
 
 ### Performance and architecture
 
+[`scripts/verify-orientation.mjs`](../scripts/verify-orientation.mjs) verifies
+the checked-in WASM payload alongside freshly compiled indexed
+and full-scan variants of the same native physics. A deterministic three-grip
+shaking/release sequence must yield byte-identical positions, velocities,
+contacts, deformation gradients, visible positions/normals, and bounds. Separate
+collapsed/flat-state cases cover equal minima, local blending, admissible motion
+after the repair budget is exhausted, and cache invalidation after reset. Every
+substep must stay below a deterministic work ceiling, and local indexing must
+still avoid redundant full scans. Reported CPU timings are diagnostic only.
+Verification exports and counters are excluded from the shipped kernel.
+
+[`scripts/verify-deformation.mjs`](../scripts/verify-deformation.mjs) replays
+actual pointer events once per rendered frame with two or three simultaneous
+grips at 20, 30 and 60 Hz. It checks orientation every fixed substep, volume and
+continued movement during shaking, exact visible embedding, camera/grip cleanup,
+recovery of height and volume after release, and eventual exact sleep. It also
+exercises the JavaScript fallback and invalid post-solver facility edits. This
+covers the sustained mobile collapse that the earlier native-equivalence test
+missed; accepting an inverted result after exhausting repair is now a failure.
+
 [`scripts/verify-performance.mjs`](../scripts/verify-performance.mjs) checks
 that the fixed step retains real time through hitches, grabbing does not scan
 the visible mesh linearly, coalesced release endpoints are preserved, the
@@ -175,6 +203,8 @@ npm run test:trampoline
 npm run test:facility-shadows
 npm run test:facility-sound
 npm run test:multitouch
+npm run test:orientation # requires CLANG pointing to a WASM-capable compiler
+npm run test:deformation
 npm run test:performance
 npm run build
 ```

@@ -159,6 +159,7 @@ export class FacilityCollision {
 
   private finish(changed:boolean) {
     if(!changed)return;
+    this.body.stabilizeContacts();
     this.body.wake();this.body.updateCenter();this.body.surfaceDirty=true;
   }
 }

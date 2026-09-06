@@ -19,6 +19,19 @@ static uint32_t grab_ids_p, grab_weights_p, grab_target_p, grab_lambda_p;
 static uint32_t surface_positions_p, surface_normals_p, surface_ids_p, surface_weights_p, rest_normals_p;
 static uint32_t meta_p;
 static double total_mass;
+static uint32_t adjacency_offsets_p, adjacency_elements_p, repair_values_p, safe_positions_p;
+static void configure_orientation_index(void);
+
+#ifdef VERIFY_ORIENTATION
+static uint32_t jacobian_evaluations, orientation_fallbacks;
+#endif
+
+#ifndef REFERENCE_ORIENTATION_SCAN
+// Immutable node-to-element adjacency and a tournament tree of current minima.
+// Scratch is local to this module instance and rebuilt only on a repair step.
+static uint32_t repair_tree_p, repair_marks_p;
+static uint32_t repair_leaf_count, repair_epoch;
+#endif
 
 static inline double *d64(uint32_t p) { return (double *)(uintptr_t)p; }
 static inline float *f32(uint32_t p) { return (float *)(uintptr_t)p; }
@@ -50,9 +63,13 @@ __attribute__((export_name("configure"))) void configure(
   nodal_volume_p=nodal_volume;nodal_f_p=nodal_f;grab_ids_p=grab_ids;grab_weights_p=grab_weights;grab_target_p=grab_target;grab_lambda_p=grab_lambda;
   surface_positions_p=surface_positions;surface_normals_p=surface_normals;surface_ids_p=surface_ids;surface_weights_p=surface_weights;rest_normals_p=rest_normals;
   meta_p=meta;total_mass=totalMass;
+  configure_orientation_index();
 }
 
 static inline double tet_jacobian(uint32_t e,const double *pos) {
+#ifdef VERIFY_ORIENTATION
+  jacobian_evaluations++;
+#endif
   const uint32_t *ids=u32(element_ids_p);const double *inv_det=d64(inverse_rest_det_p);
   const uint32_t a=ids[e*4]*3,b=ids[e*4+1]*3,c=ids[e*4+2]*3,d=ids[e*4+3]*3;
   const double ax=pos[b]-pos[a],bx=pos[c]-pos[a],cx=pos[d]-pos[a];
@@ -63,8 +80,79 @@ static inline double tet_jacobian(uint32_t e,const double *pos) {
 
 static double minimum_jacobian(const double *pos,double stop_at) {
   double minimum=1.0/0.0;
-  for(uint32_t e=0;e<element_count;e++) {double J=tet_jacobian(e,pos);if(J<minimum)minimum=J;if(minimum<stop_at)return minimum;}
+  for(uint32_t e=0;e<element_count;e++) {double J=tet_jacobian(e,pos);if(!__builtin_isfinite(J))return -1.0/0.0;if(J<minimum)minimum=J;if(minimum<stop_at)return minimum;}
   return minimum;
+}
+
+static void configure_orientation_index(void) {
+  adjacency_offsets_p=alloc_mem((node_count+1)*sizeof(uint32_t));
+  adjacency_elements_p=alloc_mem(element_count*4*sizeof(uint32_t));
+  repair_values_p=alloc_mem((element_count+1)*sizeof(double));
+  safe_positions_p=alloc_mem(node_count*3*sizeof(double));
+#ifndef REFERENCE_ORIENTATION_SCAN
+  repair_leaf_count=1;while(repair_leaf_count<element_count)repair_leaf_count*=2;
+  repair_tree_p=alloc_mem(repair_leaf_count*2*sizeof(uint32_t));
+  repair_marks_p=alloc_mem(element_count*sizeof(uint32_t));
+#endif
+  // Match the wrapper's fixed-memory exhaustion behavior before writing scratch.
+  if(heap>__builtin_wasm_memory_size(0)*65536u)__builtin_trap();
+  uint32_t *offsets=u32(adjacency_offsets_p),*adjacent=u32(adjacency_elements_p);
+  const uint32_t *ids=u32(element_ids_p);
+  for(uint32_t n=0;n<=node_count;n++)offsets[n]=0;
+  for(uint32_t i=0;i<element_count*4;i++)offsets[ids[i]+1]++;
+  for(uint32_t n=1;n<=node_count;n++)offsets[n]+=offsets[n-1];
+  for(uint32_t e=0;e<element_count;e++)for(uint32_t q=0;q<4;q++)adjacent[offsets[ids[e*4+q]]++]=e;
+  for(uint32_t n=node_count;n>0;n--)offsets[n]=offsets[n-1];
+  offsets[0]=0;
+  for(uint32_t i=0;i<node_count*3;i++)d64(safe_positions_p)[i]=d64(x_p)[i];
+}
+
+#ifndef REFERENCE_ORIENTATION_SCAN
+static inline uint32_t repair_winner(uint32_t left,uint32_t right) {
+  const double *values=d64(repair_values_p);
+  // Left subtrees have lower element IDs: ties match the original strict-< scan.
+  return values[right]<values[left]?right:left;
+}
+
+static void build_orientation_index(const double *x) {
+  uint32_t *tree=u32(repair_tree_p),*marks=u32(repair_marks_p);double *values=d64(repair_values_p);
+  values[element_count]=1.0/0.0;repair_epoch=0;
+  for(uint32_t e=0;e<element_count;e++) {
+    double J=tet_jacobian(e,x);values[e]=__builtin_isfinite(J)?J:-1.0/0.0;marks[e]=0;
+  }
+  for(uint32_t e=0;e<repair_leaf_count;e++)tree[repair_leaf_count+e]=e<element_count?e:element_count;
+  for(uint32_t n=repair_leaf_count;n-->1;)tree[n]=repair_winner(tree[n*2],tree[n*2+1]);
+}
+
+static void refresh_orientation_index(uint32_t moved,const double *x) {
+  const uint32_t *ids=u32(element_ids_p),*offsets=u32(adjacency_offsets_p),*adjacent=u32(adjacency_elements_p);
+  uint32_t *tree=u32(repair_tree_p),*marks=u32(repair_marks_p);double *values=d64(repair_values_p);
+  if(++repair_epoch==0){for(uint32_t e=0;e<element_count;e++)marks[e]=0;repair_epoch=1;}
+  // Only incident elements can change. Deduplicate elements sharing several of
+  // the four moved nodes; refresh after all position writes, including fallback.
+  for(uint32_t q=0;q<4;q++) {
+    uint32_t id=ids[moved*4+q];
+    for(uint32_t i=offsets[id];i<offsets[id+1];i++) {
+      uint32_t e=adjacent[i];if(marks[e]==repair_epoch)continue;marks[e]=repair_epoch;
+      double J=tet_jacobian(e,x);values[e]=__builtin_isfinite(J)?J:-1.0/0.0;
+      for(uint32_t n=(repair_leaf_count+e)/2;n>0;n/=2)tree[n]=repair_winner(tree[n*2],tree[n*2+1]);
+    }
+  }
+}
+#else
+// Verification oracle: retain the original full scan, with identical repair math.
+static void build_orientation_index(const double *x) {(void)x;}
+static void refresh_orientation_index(uint32_t moved,const double *x) {(void)moved;(void)x;}
+#endif
+
+static double worst_orientation(const double *x,uint32_t *worst) {
+#ifdef REFERENCE_ORIENTATION_SCAN
+  double minimum=1.0/0.0;*worst=0;
+  for(uint32_t e=0;e<element_count;e++){double J=tet_jacobian(e,x);if(!__builtin_isfinite(J))J=-1.0/0.0;if(J<minimum){minimum=J;*worst=e;}}
+  return minimum;
+#else
+  (void)x;*worst=u32(repair_tree_p)[1];return d64(repair_values_p)[*worst];
+#endif
 }
 
 static inline void deformation(uint32_t e,const double *x,const uint32_t *ids,const double *grad,double *f) {
@@ -137,23 +225,26 @@ static inline void project_orientation(uint32_t e,double target,double *x,const 
 }
 
 static double repair_orientation(double *x,const double *previous,const double *inverse_mass,const uint32_t *ids,const double *grad) {
-  // Never shrink the global timestep. Correct only the tetrahedra that cross
-  // the orientation barrier. The previous state is known-valid and is used
-  // only as a local fallback if determinant projection stalls.
+  // Retain the established small local corrections, but never let a difficult
+  // cluster start the old nested 256 x 256 repair loop.
   double minimum=1.0/0.0;
-  for(uint32_t pass=0;pass<256;pass++) {
-    uint32_t worst=0;minimum=1.0/0.0;
-    for(uint32_t e=0;e<element_count;e++){double J=tet_jacobian(e,x);if(J<minimum){minimum=J;worst=e;}}
+  uint32_t worst=0;
+  for(uint32_t pass=0;pass<32;pass++) {
+    minimum=worst_orientation(x,&worst);
     if(minimum>=.135)return minimum;
     const double before=minimum;
     project_orientation(worst,.155,x,inverse_mass,ids,grad);
     const double after=tet_jacobian(worst,x);
     if(previous && !(after>before+1e-10)) {
+#ifdef VERIFY_ORIENTATION
+      orientation_fallbacks++;
+#endif
       const uint32_t o=worst*4;
       for(uint32_t q=0;q<4;q++){uint32_t at=ids[o+q]*3;for(uint32_t axis=0;axis<3;axis++)x[at+axis]=.5*(x[at+axis]+previous[at+axis]);}
     }
+    refresh_orientation_index(worst,x);
   }
-  return minimum_jacobian(x,-1.0/0.0);
+  return worst_orientation(x,&worst);
 }
 
 static inline void solve_contacts(double floor,double *x,const double *inverse_mass,double *node_contact) {
@@ -161,26 +252,35 @@ static inline void solve_contacts(double floor,double *x,const double *inverse_m
   for(uint32_t c=0;c<contact_count;c++) {double y=0;uint32_t o=c*4;for(uint32_t k=0;k<4;k++){uint32_t id=ids[o+k];y+=x[id*3+1]*weights[o+k];}if(y>=floor)continue;double depth=floor-y;normal[c]+=depth;for(uint32_t k=0;k<4;k++){uint32_t id=ids[o+k];double w=weights[o+k];x[id*3+1]+=inverse_mass[id]*w*depth/denom[c];node_contact[id]+=depth*w;}}
 }
 
-static double preserve_orientation(double *x,const double *previous,double *candidate,double *meta,const double *inverse_mass,const uint32_t *ids,const double *grad) {
-  (void)candidate;
-  double minimum=minimum_jacobian(x,.12);meta[1]=minimum;if(minimum>=.12){meta[2]=0;return 1.0;}
-  meta[2]=1;
-  minimum=repair_orientation(x,previous,inverse_mass,ids,grad);
-  // Projection normally clears the barrier. If several adjacent elements are
-  // simultaneously pathological, locally blend only the worst tet toward the
-  // known-valid previous state. This preserves the full 1/240 s step for the
-  // rest of the body instead of putting the whole simulation into slow motion.
-  for(uint32_t pass=0;minimum<.12&&pass<256;pass++) {
-    uint32_t worst=0;minimum=1.0/0.0;
-    for(uint32_t e=0;e<element_count;e++){double J=tet_jacobian(e,x);if(J<minimum){minimum=J;worst=e;}}
-    if(minimum>=.12)break;
-    const uint32_t o=worst*4;
-    for(uint32_t q=0;q<4;q++){uint32_t at=ids[o+q]*3;for(uint32_t axis=0;axis<3;axis++)x[at+axis]=.5*(x[at+axis]+previous[at+axis]);}
+#include "orientation-safety.h"
+
+static double preserve_orientation(double *x,const double *previous,double *candidate,double *meta,const double *inverse_mass,const uint32_t *ids,const double *grad,double floor) {
+  double minimum=minimum_jacobian(x,.12);meta[2]=0;meta[15]=0;
+  if(minimum<.12) {
+    meta[2]=1;build_orientation_index(x);
     minimum=repair_orientation(x,previous,inverse_mass,ids,grad);
+    if(minimum<.12){meta[15]=1;minimum=accept_admissible_motion(x,previous,candidate,floor);}
   }
-  meta[1]=minimum_jacobian(x,-1.0/0.0);
+  // Only an admissible result becomes the next recovery reference. Facility
+  // contacts can edit x after this call, so previous alone is not a safe backup.
+  for(uint32_t i=0;i<node_count*3;i++)d64(safe_positions_p)[i]=x[i];
+  meta[1]=minimum;
   return 1.0;
 }
+
+__attribute__((export_name("stabilize_contacts"))) void stabilize_contacts(double floor) {
+  preserve_orientation(d64(x_p),d64(safe_positions_p),d64(candidate_p),d64(meta_p),d64(inverse_mass_p),u32(element_ids_p),d64(element_gradients_p),floor);
+}
+
+#ifdef VERIFY_ORIENTATION
+// Test-only exports; absent from the shipped kernel and its step hot path.
+__attribute__((export_name("verify_orientation"))) void verify_orientation(double floor) {
+  jacobian_evaluations=0;orientation_fallbacks=0;
+  preserve_orientation(d64(x_p),d64(previous_p),d64(candidate_p),d64(meta_p),d64(inverse_mass_p),u32(element_ids_p),d64(element_gradients_p),floor);
+}
+__attribute__((export_name("verify_evaluations"))) uint32_t verify_evaluations(void) {return jacobian_evaluations;}
+__attribute__((export_name("verify_fallbacks"))) uint32_t verify_fallbacks(void) {return orientation_fallbacks;}
+#endif
 
 __attribute__((export_name("step"))) void step(double h,uint32_t grab_count,double gravity,double shear,double bulk,double air,double damping,uint32_t iterations,double static_friction,double dynamic_friction,double restitution,double floor,double max_grab_force) {
   double *x=d64(x_p),*previous=d64(previous_p),*candidate=d64(candidate_p),*velocity=d64(velocity_p),*mass=d64(mass_p),*inverse_mass=d64(inverse_mass_p),*node_contact=d64(contact_node_p);
@@ -195,7 +295,7 @@ __attribute__((export_name("step"))) void step(double h,uint32_t grab_count,doub
   }
   uint32_t grounded=0;double *denom=d64(contact_denominator_p);
   for(uint32_t c=0;c<contact_count;c++)if(cn[c]>0){grounded=1;double dx=0,dz=0;uint32_t o=c*4;for(uint32_t k=0;k<4;k++){uint32_t id=cids[o+k];dx+=(x[id*3]-previous[id*3])*cw[o+k];dz+=(x[id*3+2]-previous[id*3+2])*cw[o+k];}double tangent=dsqrt(dx*dx+dz*dz),friction=tangent<static_friction*cn[c]?1:dmin(1,dynamic_friction*cn[c]/(tangent+1e-20));for(uint32_t k=0;k<4;k++){uint32_t id=cids[o+k];double s=inverse_mass[id]*cw[o+k]*friction/denom[c];x[id*3]-=dx*s;x[id*3+2]-=dz*s;}}
-  meta[14]=preserve_orientation(x,previous,candidate,meta,inverse_mass,ids,grad);
+  meta[14]=preserve_orientation(x,previous,candidate,meta,inverse_mass,ids,grad,floor);
   for(uint32_t i=0;i<node_count*3;i++)velocity[i]=(x[i]-previous[i])/h;
   for(uint32_t c=0;c<contact_count;c++)if(cn[c]>0&&ci[c]<0){double vy=0;uint32_t o=c*4;for(uint32_t k=0;k<4;k++){uint32_t id=cids[o+k];vy+=velocity[id*3+1]*cw[o+k];}double bounce=ci[c]<-.18?-ci[c]*restitution:0,impulse=dmax(0,bounce-vy)/denom[c];for(uint32_t k=0;k<4;k++){uint32_t id=cids[o+k];velocity[id*3+1]+=inverse_mass[id]*cw[o+k]*impulse;}}
   const uint32_t *edges=u32(edge_ids_p);

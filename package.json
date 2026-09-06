@@ -16,6 +16,8 @@
     "test:facility-shadows": "node --experimental-strip-types scripts/verify-facility-shadows.mjs",
     "test:facility-sound": "node --experimental-strip-types scripts/verify-facility-sound.mjs",
     "test:multitouch": "node --experimental-strip-types scripts/verify-multitouch.mjs",
+    "test:orientation": "node --experimental-strip-types scripts/verify-orientation.mjs",
+    "test:deformation": "node --experimental-strip-types scripts/verify-deformation.mjs",
     "test:performance": "node --experimental-strip-types scripts/verify-performance.mjs",
     "benchmark": "node --experimental-strip-types scripts/benchmark.mjs",
     "build": "tsc && vite build",
