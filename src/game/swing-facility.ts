@@ -2,6 +2,7 @@ import type { Scene } from 'three/webgpu';
 import { Box3, Vector3 } from 'three/webgpu';
 import type { FacilityShadows } from '../graphics/facility-shadows.ts';
 import type { SoftBody } from '../physics/soft-body.js';
+import { FacilityCollision } from '../physics/facility-collision.ts';
 import { Swing } from '../graphics/swing.ts';
 import { SwingPhysics, SWING } from './swing-physics.ts';
 import type { Facility } from './facilities.ts';
@@ -15,14 +16,13 @@ export class SwingFacility implements Facility {
   readonly cameraDistance=.29;
   readonly physics:SwingPhysics;
   private readonly visual=new Swing();
-  private readonly point=new Vector3();
-  private readonly delta=new Vector3();
-  private readonly axis=new Vector3();
+  private readonly collision:FacilityCollision;
   private laughStarted=false;
   private readonly audio:FacilityMotionSound;
   constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,sound:FacilitySoundSink=()=>{}) {
+    this.collision=new FacilityCollision(body);
     this.audio=new FacilityMotionSound(sound,{x:SWING.x,y:SWING.height,z:SWING.z});
-    this.physics=new SwingPhysics(body);scene.add(this.visual.group);
+    this.physics=new SwingPhysics(body);this.visual.update(this.physics.angle,this.physics.seatCollisionMotion);scene.add(this.visual.group);
     shadows.add(this.visual.group,new Box3(
       new Vector3(SWING.x-.10,0,SWING.z-.15),
       new Vector3(SWING.x+.10,SWING.height+.02,SWING.z+.15),
@@ -48,24 +48,13 @@ export class SwingFacility implements Facility {
   afterStep() {
     if(this.active)return;
     const b=this.physics.body;
-    if(Math.abs(b.center.x-SWING.x)>.16||Math.abs(b.center.z-SWING.z)>.17)return;
-    // Rounded frame contact keeps a walking jelly from passing through the legs.
-    let changed=false;
-    for(let i=0;i<b.mass.length;i++)for(const leg of this.visual.legs) {
-      const j=i*3;this.point.fromArray(b.x,j);this.axis.copy(leg.b).sub(leg.a);
-      const t=Math.max(0,Math.min(1,this.delta.copy(this.point).sub(leg.a).dot(this.axis)/this.axis.lengthSq()));
-      this.delta.copy(this.point).sub(leg.a).addScaledVector(this.axis,-t);
-      const distance=this.delta.length(),radius=leg.radius+.003;
-      if(distance>=radius)continue;
-      if(distance<1e-9)this.delta.set(1,0,0);else this.delta.divideScalar(distance);
-      this.point.addScaledVector(this.delta,radius-distance);b.x.set(this.point.toArray(),j);
-      const inward=b.velocity[j]*this.delta.x+b.velocity[j+1]*this.delta.y+b.velocity[j+2]*this.delta.z;
-      if(inward<0)for(let axis=0;axis<3;axis++)b.velocity[j+axis]-=inward*this.delta.getComponent(axis);
-      changed=true;
-    }
-    if(changed){b.wake();b.surfaceDirty=true;b.updateCenter();}
+    if(Math.abs(b.center.x-SWING.x)>.23||Math.abs(b.center.z-SWING.z)>.23)return;
+    // Tight frame boxes keep a walking jelly out without making the whole
+    // swing's shadow envelope behave like an invisible collision box.
+    this.visual.update(this.physics.angle,this.physics.seatCollisionMotion);
+    this.collision.resolveBoxes(this.visual.collisionBoxes);
   }
-  update() {this.visual.update(this.physics.angle);}
+  update() {this.visual.update(this.physics.angle,this.physics.seatCollisionMotion);}
   reset() {this.audio.reset();this.laughStarted=false;this.physics.reset();this.update();}
   dispose() {this.visual.group.removeFromParent();this.visual.dispose();}
 }

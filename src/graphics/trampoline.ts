@@ -24,8 +24,8 @@ export class Trampoline {
     // Closed upholstered annulus: a broad crown, rounded shoulders and a real
     // underside. Stitch lines sit on the cushion instead of cutting holes in it.
     const cushionProfile=(angle:number)=>new THREE.Vector2(
-      .091+.010*Math.sign(Math.cos(angle))*Math.abs(Math.cos(angle))**.55,
-      TRAMPOLINE.height+.001+.0075*Math.sign(Math.sin(angle))*Math.abs(Math.sin(angle))**.65,
+      TRAMPOLINE.rimMajorRadius+TRAMPOLINE.rimMinorRadius*Math.sign(Math.cos(angle))*Math.abs(Math.cos(angle))**.55,
+      TRAMPOLINE.height+TRAMPOLINE.rimCenterOffset+TRAMPOLINE.rimHalfHeight*Math.sign(Math.sin(angle))*Math.abs(Math.sin(angle))**.65,
     );
     const profile=Array.from({length:49},(_,i)=>cushionProfile(i/48*Math.PI*2));
     profile[48]=profile[0].clone();

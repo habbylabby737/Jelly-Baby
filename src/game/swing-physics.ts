@@ -1,9 +1,10 @@
 import { Vector3 } from 'three/webgpu';
+import type { CollisionMotion } from '../physics/facility-collision.ts';
 import type { SoftBody } from '../physics/soft-body.js';
 import { PHYS } from '../physics/constants.js';
 
 // Metres, matching the 7 cm confection and the existing simulation's gravity.
-export const SWING={x:-.155,z:-.035,height:.172,length:.128,width:.108,maxAngle:.85};
+export const SWING={x:-.155,z:-.035,height:.172,length:.128,width:.108,maxAngle:.85,interactionRadius:.145,seatMass:.026};
 
 /** Nonlinear driven pendulum; a compliant rider remains in the FEM solver. */
 export class SwingPhysics {
@@ -12,10 +13,25 @@ export class SwingPhysics {
   riding=false;
   private elapsed=0;
   private readonly target=new Vector3();
+  private readonly seatInertia=SWING.seatMass*SWING.length**2;
   readonly body:SoftBody;
+  /** Finite rotational response for the empty seat when it hits the body. */
+  readonly seatCollisionMotion:CollisionMotion={
+    velocityAt:(_x,y,z,out)=>{
+      out.x=0;out.y=this.speed*(z-SWING.z);out.z=-this.speed*(y-SWING.height);
+    },
+    inverseMassAt:(_x,y,z,_nx,ny,nz)=>{
+      const angleJacobian=ny*(z-SWING.z)-nz*(y-SWING.height);
+      return angleJacobian*angleJacobian/this.seatInertia;
+    },
+    applyImpulse:(_x,y,z,_ix,iy,iz)=>{
+      const angleJacobianY=z-SWING.z,angleJacobianZ=-(y-SWING.height);
+      this.speed+=(iy*angleJacobianY+iz*angleJacobianZ)/this.seatInertia;
+    },
+  };
   constructor(body:SoftBody) {this.body=body;}
   get nearby() {
-    return !this.body.grab&&this.body.grounded&&Math.hypot(this.body.center.x-SWING.x,this.body.center.z-SWING.z)<.105;
+    return !this.body.grab&&this.body.grounded&&Math.hypot(this.body.center.x-SWING.x,this.body.center.z-SWING.z)<SWING.interactionRadius;
   }
   toggle() {
     if(this.riding){this.leave();return true;}

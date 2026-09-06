@@ -41,8 +41,10 @@ registered facility.
 [`src/graphics/swing.ts`](../src/graphics/swing.ts) builds a miniature joiner's
 swing from rounded timber, sage seat pieces, brass pegs/rings, and paired rope
 bridles. The seat is a three-slat assembly under a pivot group. The visual pivot
-rotates around the X axis; the fixed frame stays in world space. The same frame
-leg segments are exposed to the inactive-walk collision pass.
+rotates around the X axis; the fixed frame stays in world space. The frame
+exposes tight oriented collision boxes for its four angled beams, four foot
+pads, two side rails, and top bar; the three moving seat slats and two underside
+supports expose matching boxes that follow the pivot.
 
 The visual material includes a small procedural TSL grain over the timber. All
 geometry is disposed through the swing group rather than leaking shared
@@ -60,6 +62,7 @@ metres:
 | Rope length | `.128` |
 | Seat width | `.108` |
 | Maximum angle | `.85` rad (about 49°) |
+| Moving seat mass | `.026` kg |
 
 The local machine is a damped nonlinear pendulum. While occupied, it gradually
 raises its target amplitude over seven seconds, injects energy in phase with
@@ -67,7 +70,7 @@ the current motion, gives a short initial assist, and applies a conservative
 energy ceiling at the turning points. It is a driven pendulum approximation,
 not a rope solver or a full multibody constraint system.
 
-Boarding is allowed only when the body is grounded, ungrabbed, and within `.105`
+Boarding is allowed only when the body is grounded, ungrabbed, and within `.145`
 m of the swing. The body is placed into the current seat frame and receives the
 corresponding tangential velocity. During the ride, each cage node is pulled
 toward its seat-frame target with stiffness and damping that rise toward the
@@ -78,9 +81,9 @@ animation.
 Dismounting moves the body to the clear approach side, undoes the seat frame,
 places the lowest point just above the floor, and zeroes velocity. An inactive
 swing continues to integrate its angle and speed and gradually loses energy.
-When inactive and nearby, the facility also pushes particles out of its rounded
-frame legs and removes inward velocity so a walking body cannot pass through
-the structure.
+When inactive and nearby, the facility resolves its frame boxes against the
+deformed body surface and removes inward velocity so a walking body cannot
+ghost through the structure.
 
 The normal face blinks during the gentle initial ride. Once the swing crosses
 15°, `laughStarted` becomes true and laughter remains active for the rest of
@@ -110,7 +113,7 @@ the bed compression changes; the frame remains static.
 | Target bounce | `.105` m |
 | Laugh threshold | `.035` m |
 
-Boarding requires grounded, ungrabbed proximity within `.125` m. The body is
+Boarding requires grounded, ungrabbed proximity within `.145` m. The body is
 placed over the bed and the rest of its velocity is cleared. While active,
 weighted lower nodes measure foot height and foot speed. If the feet are below
 the bed, a unilateral spring force combines compression, damping, and a
@@ -125,8 +128,34 @@ unloaded bed follows a damped recoil mode rather than a cloth simulation.
 The normal face becomes sustained laughter after the center rises 3.5 cm above
 the bed. Leaving moves the body to the clear side of the trampoline, rests it
 on the floor, and stores any remaining supported bed speed so the empty bed can
-finish recoiling. When inactive, a padded-rim collision keeps a walking body
-from passing through the frame.
+finish recoiling. When inactive, a cylinder-shaped keep-out boundary keeps a
+walking body from entering the trampoline disk.
+
+### Collision volumes
+
+Facility collision is intentionally shape-specific. The `Box3` registered with
+`FacilityShadows` is only a shadow/motion-envelope broad phase; it is never used
+as the physical obstacle.
+
+The inactive swing uses the tight oriented boxes exposed by its frame and moving
+seat geometry. Moving seat boxes expose their instantaneous point velocity and a
+finite rotational inertia, so contact impulses transfer momentum into the jelly
+and slow the empty swing instead of letting its seat pass through the body.
+The inactive trampoline uses a vertical cylinder with the trampoline's outer
+radius and cushion height. Its radial side is a one-sided keep-out boundary, so
+the jelly can route around it and can still clear it with a high enough jump.
+
+The narrow phase evaluates about 2,500 spatially thinned points from the exact
+deformed visible-surface bindings. Each point moves its four owning cage nodes
+through the same inverse-mass weighting used by the soft-body contacts. This is
+enough to keep the rendered surface clear of the simple facility volumes while
+avoiding a full 72,234-vertex triangle collision scan every fixed step. A small
+2 mm contact margin covers the spacing between anchors.
+
+Both facilities use a `.145 m` grounded approach radius, intentionally larger
+than the physical contact region. The `Press E to ...` affordance therefore
+appears before the player reaches the collision volume and remains usable when
+the volume is doing its job.
 
 ## Facility shadow projection
 

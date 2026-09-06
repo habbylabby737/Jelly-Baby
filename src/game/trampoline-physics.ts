@@ -2,7 +2,9 @@ import { Vector3 } from 'three/webgpu';
 import type { SoftBody } from '../physics/soft-body.js';
 import { PHYS } from '../physics/constants.js';
 
-export const TRAMPOLINE={x:.165,z:-.035,radius:.10,matRadius:.075,height:.043,maxBounce:.105,laughHeight:.035};
+export const TRAMPOLINE={x:.165,z:-.035,radius:.10,matRadius:.075,height:.043,
+  rimMajorRadius:.091,rimMinorRadius:.010,rimCenterOffset:.001,rimHalfHeight:.0075,
+  interactionRadius:.145,maxBounce:.105,laughHeight:.035};
 
 /** A unilateral spring bed: loaded compression/rebound, then gravity-only flight.
  * A bounded leg drive replenishes energy on the upstroke; the FEM rider keeps
@@ -29,7 +31,7 @@ export class TrampolinePhysics {
     }
   }
   get nearby() {
-    return !this.body.grab&&this.body.grounded&&Math.hypot(this.body.center.x-TRAMPOLINE.x,this.body.center.z-TRAMPOLINE.z)<.125;
+    return !this.body.grab&&this.body.grounded&&Math.hypot(this.body.center.x-TRAMPOLINE.x,this.body.center.z-TRAMPOLINE.z)<TRAMPOLINE.interactionRadius;
   }
   get bounceHeight() {return Math.max(0,this.body.center.y-this.restCenter.y-TRAMPOLINE.height);}
   toggle() {

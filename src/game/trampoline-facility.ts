@@ -1,6 +1,8 @@
 import { Box3, Vector3, type Scene } from 'three/webgpu';
 import type { FacilityShadows } from '../graphics/facility-shadows.ts';
 import type { SoftBody } from '../physics/soft-body.js';
+import { FacilityCollision } from '../physics/facility-collision.ts';
+import { PHYS } from '../physics/constants.js';
 import { Trampoline } from '../graphics/trampoline.ts';
 import { TRAMPOLINE, TrampolinePhysics } from './trampoline-physics.ts';
 import type { Facility } from './facilities.ts';
@@ -12,9 +14,11 @@ export class TrampolineFacility implements Facility {
   readonly cameraDistance=.30;
   readonly physics:TrampolinePhysics;
   private readonly visual=new Trampoline();
+  private readonly collision:FacilityCollision;
   private laughStarted=false;
   private readonly audio:FacilityMotionSound;
   constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,sound:FacilitySoundSink=()=>{}) {
+    this.collision=new FacilityCollision(body);
     this.audio=new FacilityMotionSound(sound,{x:TRAMPOLINE.x,y:TRAMPOLINE.height,z:TRAMPOLINE.z});
     this.physics=new TrampolinePhysics(body);scene.add(this.visual.group);
     shadows.add(this.visual.group,new Box3(
@@ -37,22 +41,15 @@ export class TrampolineFacility implements Facility {
       if(this.physics.bounceHeight>=TRAMPOLINE.laughHeight)this.laughStarted=true;
       return;
     }
-    // Padded rim contact stops a walking baby from passing through the frame.
+    // A cylinder-shaped keep-out barrier follows the trampoline's disk. It is
+    // only active below the top of the cushion, so a sufficiently high jump can
+    // still clear the obstacle.
     const b=this.physics.body;
-    if(Math.hypot(b.center.x-TRAMPOLINE.x,b.center.z-TRAMPOLINE.z)>.15)return;
-    let changed=false;
-    for(let j=0;j<b.x.length;j+=3) {
-      const x=b.x[j]-TRAMPOLINE.x,z=b.x[j+2]-TRAMPOLINE.z,r=Math.hypot(x,z);
-      if(r<.001)continue;
-      const dx=x*(1-.091/r),dy=b.x[j+1]-TRAMPOLINE.height-.001,dz=z*(1-.091/r),distance=Math.hypot(dx,dy,dz);
-      if(distance>=.012||distance<1e-9)continue;
-      const scale=(.012-distance)/distance;
-      b.x[j]+=dx*scale;b.x[j+1]+=dy*scale;b.x[j+2]+=dz*scale;
-      const inward=(b.velocity[j]*dx+b.velocity[j+1]*dy+b.velocity[j+2]*dz)/(distance*distance);
-      if(inward<0){b.velocity[j]-=inward*dx;b.velocity[j+1]-=inward*dy;b.velocity[j+2]-=inward*dz;}
-      changed=true;
-    }
-    if(changed){b.updateCenter();b.wake();b.surfaceDirty=true;}
+    if(Math.hypot(b.center.x-TRAMPOLINE.x,b.center.z-TRAMPOLINE.z)>.21)return;
+    this.collision.resolveCylinderBarrier(
+      TRAMPOLINE.x,TRAMPOLINE.z,TRAMPOLINE.radius,PHYS.floor,
+      TRAMPOLINE.height+TRAMPOLINE.rimCenterOffset+TRAMPOLINE.rimHalfHeight,
+    );
   }
   update() {this.visual.update(this.physics.compression);}
   reset() {this.audio.reset();this.physics.reset();this.laughStarted=false;this.update();}

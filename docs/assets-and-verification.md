@@ -72,6 +72,7 @@ The scripts in `package.json` are the supported entry points:
 | `npm run test:physics` | Run the broad physics/rendering/optics regression. |
 | `npm run test:swing` | Verify swing behavior and shared facility routing. |
 | `npm run test:trampoline` | Verify trampoline support, rebound, and transitions. |
+| `npm run test:facility-collision` | Verify tight facility volumes, surface clearance, and pre-contact hints. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
 | `npm run test:facility-sound` | Verify motion-event timing and procedural audio. |
 | `npm run test:multitouch` | Verify simultaneous grips and cleanup paths. |
@@ -105,6 +106,13 @@ exclusive-owner rules.
 the trampoline's approach and boarding rules, supported compression, rebound
 height, airborne behavior, face threshold, frame collision, leave/reset, and
 facility lifecycle.
+
+[`scripts/verify-facility-collision.mjs`](../scripts/verify-facility-collision.mjs)
+walks the deformed surface into both facilities and checks that the visible skin
+stays outside the swing frame/seat boxes and trampoline cylinder. It also
+verifies that each interaction hint appears before first physical contact and
+that a moving seat transfers momentum into the body and loses angular speed on
+contact.
 
 [`scripts/verify-facility-shadows.mjs`](../scripts/verify-facility-shadows.mjs)
 checks the directional projection matrix, WebGPU table lookup orientation,

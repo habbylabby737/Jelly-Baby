@@ -138,6 +138,25 @@ surface BVH, grabbing, face placement, optical thickness, and facial
 clearance. The accelerated path writes the same arrays from WebAssembly, then
 updates the same Three.js attributes and bounding volumes.
 
+## Facility volume contacts
+
+Facility obstacles do not scan the full visible triangle mesh. A fixed rest-space
+grid selects roughly 2,500 visible-surface anchors, and each anchor retains the
+four cage-node weights from the normal surface embedding. At a facility contact
+the anchor is projected out of the obstacle and its inward normal velocity is
+removed from those same four nodes. This preserves deformation and lets the
+body slide or squash against the obstacle without introducing a second body
+representation.
+
+The facility narrow phase supplies the obstacle-specific shape: oriented boxes
+for the swing frame and its moving seat, plus a radial side boundary for the
+inactive trampoline cylinder. Moving boxes can provide point velocity and a
+finite effective mass; the solver then applies the matching reaction impulse to
+the mover, while static boxes behave as infinite-mass obstacles. A small
+broad-phase center check avoids this work when the body is well away from the
+facility. This is a deliberately bounded approximation between a single
+enclosing AABB and full deforming mesh-to-mesh collision.
+
 ## Floor contact, sleep, and wake-up
 
 Floor constraints use the precomputed four-node contact bindings. A contact
