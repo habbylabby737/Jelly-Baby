@@ -129,4 +129,25 @@ function centerVelocity(body) {
   facility.dispose();
 }
 
-console.log('Facility collision volumes, deformed-surface clearance, hard throw and pre-contact hints verified');
+{
+  const body=new SoftBody(loadModel()),rig=new Locomotion(body);settle(body,rig);
+  const facility=new SwingFacility(new Scene(),body,{add(){}}),box=facility.visual.collisionBoxes[2],collision=new FacilityCollision(body);
+  // Regression for a hard, nearly tangential strike on the inclined frame. The
+  // old bulk sweep repeatedly found a micrometre-scale re-entry at t~=0,
+  // rewound the entire step, and left the body suspended while velocity grew.
+  const start=[box.center.x-.0413790483908924,box.center.y+.03417744100270937,box.center.z+.12146645037437766];
+  const velocity=[1.0418111791779852,-.06741063597842649,-3.2596108555798913];
+  body.updateCenter();
+  const dx=start[0]-body.center.x,dy=start[1]-body.center.y,dz=start[2]-body.center.z;
+  for(let j=0;j<body.x.length;j+=3) {
+    body.x[j]+=dx;body.x[j+1]+=dy;body.x[j+2]+=dz;
+    body.velocity[j]=velocity[0];body.velocity[j+1]=velocity[1];body.velocity[j+2]=velocity[2];
+  }
+  body.previous.set(body.x);body.grounded=false;body.wake();body.updateCenter();
+  for(let step=0;step<480;step++) {rig.step(PHYS.step);body.step(PHYS.step);collision.resolveBoxes([box]);}
+  assert(body.grounded&&body.center.y<.04,'grazing hard throw slides off the swing frame instead of sweep-locking in mid-air');
+  assert(Math.hypot(...centerVelocity(body))<.1,'grazing hard throw does not accumulate hidden velocity while pinned');
+  facility.dispose();
+}
+
+console.log('Facility collision volumes, deformed-surface clearance, hard throw, grazing release and pre-contact hints verified');

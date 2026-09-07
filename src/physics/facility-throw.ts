@@ -36,7 +36,16 @@ export function stopFacilityThrow(body:SoftBody,vertices:Int32Array,boxes:readon
         leave=Math.min(leave,far);
         if(enter>leave)break;
       }
-      if(enter<=leave&&enter<first&&(ax!==0||ay!==0||az!==0)) {first=enter;nx=ax;ny=ay;nz=az;}
+      if(enter<=leave&&enter<first&&(ax!==0||ay!==0||az!==0)) {
+        // A fast tangential slide can have >0.8 m/s bulk speed while only
+        // re-entering an already-touching face by a few micrometres. Rewinding
+        // the whole bulk step for that grazing contact erases its tangential
+        // travel every frame and can pin the jelly to an inclined beam. Leave
+        // shallow end-of-step penetration to the ordinary local contact pass;
+        // reserve the sweep for normal travel large enough to tunnel.
+        const remainingNormalTravel=-(1-Math.max(0,enter))*(dx*ax+dy*ay+dz*az);
+        if(remainingNormalTravel>margin*.25){first=enter;nx=ax;ny=ay;nz=az;}
+      }
     }
   }
   if(first===1)return false;

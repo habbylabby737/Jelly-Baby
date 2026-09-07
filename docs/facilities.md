@@ -280,9 +280,15 @@ samples against nearby static boxes. On a hit, that substep keeps the previous
 deformed shape, translates it up to the entry face, and applies the floor's low
 restitution to inward bulk velocity. This bounded approximation targets throws
 into thin frame pieces while preserving ordinary local contact deformation.
-It uses the existing proximity gates and sample density, so it does not guarantee
-clearance for every extreme deformation or a jump across an entire facility in
-one step. Moving seats and the trampoline retain their existing contact response.
+The sweep is reserved for impacts whose remaining inward normal travel exceeds
+one quarter of the normal collision margin. High-speed motion that is almost
+entirely tangential to a face therefore stays in the ordinary local contact pass;
+otherwise a micrometre-scale re-entry at the start of each step can repeatedly
+rewind all tangential travel and suspend the body against an inclined frame while
+its unapplied tangential velocity keeps growing. It uses the existing proximity
+gates and sample density, so it does not guarantee clearance for every extreme
+deformation or a jump across an entire facility in one step. Moving seats and
+the trampoline retain their existing contact response.
 
 The occupied blanket still performs exact visible-skin clearance and the full
 128-pass fairing. Its render pass is keyed by blanket version, body surface
