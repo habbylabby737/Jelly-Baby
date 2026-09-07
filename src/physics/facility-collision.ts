@@ -1,4 +1,5 @@
 import type { SoftBody } from './soft-body.js';
+import { stopFacilityThrow } from './facility-throw.ts';
 
 type PointLike={x:number;y:number;z:number};
 
@@ -86,6 +87,7 @@ export class FacilityCollision {
     if(!boxes.length)return false;
     this.findCandidates(boxes,margin);
     if(!this.candidates.length)return false;
+    if(stopFacilityThrow(this.body,this.vertices,this.candidates,margin)){this.finish(true);return true;}
     return this.resolveBoxContacts(boxes,margin);
   }
 

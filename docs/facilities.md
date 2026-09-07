@@ -275,6 +275,15 @@ contacts gameplay previously allowed; no delayed activation or sleeping timer
 is introduced. See `npm run test:collision-broadphase` for exact comparisons
 against the exhaustive traversal and focused collision CPU measurements.
 
+Fast bulk throws (over 0.8 m/s) get one additional sweep of the existing contact
+samples against nearby static boxes. On a hit, that substep keeps the previous
+deformed shape, translates it up to the entry face, and applies the floor's low
+restitution to inward bulk velocity. This bounded approximation targets throws
+into thin frame pieces while preserving ordinary local contact deformation.
+It uses the existing proximity gates and sample density, so it does not guarantee
+clearance for every extreme deformation or a jump across an entire facility in
+one step. Moving seats and the trampoline retain their existing contact response.
+
 The occupied blanket still performs exact visible-skin clearance and the full
 128-pass fairing. Its render pass is keyed by blanket version, body surface
 revision, and occupancy, so unchanged render inputs do no work. Fixed mattress

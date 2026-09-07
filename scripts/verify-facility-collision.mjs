@@ -8,7 +8,7 @@ import { SwingFacility } from '../src/game/swing-facility.ts';
 import { SWING } from '../src/game/swing-physics.ts';
 import { TrampolineFacility } from '../src/game/trampoline-facility.ts';
 import { TRAMPOLINE } from '../src/game/trampoline-physics.ts';
-import { FACILITY_COLLISION_MARGIN } from '../src/physics/facility-collision.ts';
+import { FacilityCollision, FACILITY_COLLISION_MARGIN } from '../src/physics/facility-collision.ts';
 
 function settle(body,rig) {
   for(let i=0;i<480;i++){rig.step(PHYS.step);body.step(PHYS.step);rig.afterStep();}
@@ -112,4 +112,21 @@ function centerVelocity(body) {
   facility.dispose();
 }
 
-console.log('Facility collision volumes, deformed-surface clearance and pre-contact hints verified');
+{
+  const body=new SoftBody(loadModel()),facility=new SwingFacility(new Scene(),body,{add(){}});
+  const box=facility.visual.collisionBoxes[0],collision=new FacilityCollision(body);
+  let leading=-Infinity;
+  for(let j=0;j<body.x.length;j+=3)leading=Math.max(leading,body.x[j]);
+  const dx=box.center.x-box.halfSize.x-.004-leading,dy=box.center.y-body.center.y,dz=box.center.z-body.center.z;
+  for(let j=0;j<body.x.length;j+=3){body.x[j]+=dx;body.x[j+1]+=dy;body.x[j+2]+=dz;body.velocity[j]=2;}
+  let penetration=0;
+  for(let step=0;step<12;step++) {
+    body.step(PHYS.step);collision.resolveBoxes([box]);body.updateSurface();
+    penetration=Math.max(penetration,boxPenetration(body,[box]));
+  }
+  assert(penetration<.001,'ordinary hard throw stays clear of the swing beam');
+  assert(centerVelocity(body)[0]<0,'hard throw rebounds from the beam');
+  facility.dispose();
+}
+
+console.log('Facility collision volumes, deformed-surface clearance, hard throw and pre-contact hints verified');
