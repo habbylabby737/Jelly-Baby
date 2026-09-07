@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { Box3, Group, Scene } from 'three/webgpu';
+import { Box3, Group, Quaternion, Scene, Vector3 } from 'three/webgpu';
 import { loadModel } from './load-model.mjs';
 import { SoftBody } from '../src/physics/soft-body.js';
 import { PHYS } from '../src/physics/constants.js';
 import { Locomotion } from '../src/game/locomotion.ts';
 import { HEAD_WEARABLES, WEARABLE_TABLE } from '../src/game/wearable-physics.ts';
 import { WearableFacility } from '../src/game/wearable-facility.ts';
+import { BedFacility } from '../src/game/bed-facility.ts';
+import { BED } from '../src/game/bed-physics.ts';
 
 function moveBody(body,x,z) {
   const dx=x-body.center.x,dz=z-body.center.z;
@@ -25,19 +27,36 @@ function boxPenetration(body,box) {
   return maximum;
 }
 
+function tiltBody(body,angle) {
+  const c=body.center.clone(),q=new Quaternion().setFromAxisAngle(new Vector3(0,0,1),angle),p=new Vector3();
+  for(let i=0;i<body.x.length;i+=3) {
+    p.set(body.x[i]-c.x,body.x[i+1]-c.y,body.x[i+2]-c.z).applyQuaternion(q);
+    body.x[i]=c.x+p.x;body.x[i+1]=c.y+p.y;body.x[i+2]=c.z+p.z;
+  }
+  body.previous.set(body.x);body.updateCenter();body.surfaceDirty=true;
+}
+
+function objectUp(object) {
+  return new Vector3(0,1,0).applyQuaternion(object.quaternion).normalize();
+}
+
 const scene=new Scene(),babyGroup=new Group(),body=new SoftBody(loadModel()),rig=new Locomotion(body);
 scene.add(babyGroup);
 let shadowGroup,shadowEnvelope;
 const facility=new WearableFacility(scene,body,babyGroup,rig,{add(group,envelope){shadowGroup=group;shadowEnvelope=envelope;}});
 assert.equal(shadowGroup,facility.visual.group,'table registers its complete visual group for shadows');
 assert(shadowEnvelope.containsBox(new Box3().setFromObject(facility.visual.group)),'shadow envelope contains the table and its wearables');
-assert.equal(facility.visual.collisionBoxes.length,1,'table uses one simple collision box');
+assert.equal(facility.visual.collisionBoxes.length,5,'table uses a slab plus four fitted leg collision boxes');
+const topBoxes=facility.visual.collisionBoxes.filter(box=>box.halfSize.y<.01),legBoxes=facility.visual.collisionBoxes.filter(box=>box.halfSize.y>.02);
+assert.equal(topBoxes.length,1,'one tabletop slab collision box');
+assert.equal(legBoxes.length,4,'four simple leg collision boxes');
 facility.visual.group.traverse(object=>{
   if(!object.isMesh)return;
   assert(object.castShadow&&object.receiveShadow,`${object.name} has full shadow flags`);
   for(const value of object.geometry.attributes.position.array)assert(Number.isFinite(value),`${object.name} has finite geometry`);
 });
 assert.deepEqual(facility.visual.items.map(item=>item.root.name),['floral-crown','top-hat','baseball-cap']);
+assert.deepEqual(HEAD_WEARABLES.map(item=>item.scale),[.016,.0144,.0125],'wearable scales match the tuned fit sizes');
 
 moveBody(body,WEARABLE_TABLE.x+HEAD_WEARABLES[0].slotX,WEARABLE_TABLE.z);
 assert.equal(facility.physics.availableIndex,0,'nearest slot is the floral crown');
@@ -45,30 +64,52 @@ assert(Number.isFinite(facility.interactionDistance));
 assert.equal(facility.action,'Wear Floral Crown');assert.equal(facility.mobileAction,'Wear Floral Crown');
 assert(facility.interact(),'wear interaction succeeds');
 assert.equal(facility.physics.wornIndex,0);assert.equal(facility.visual.items[0].root.parent,babyGroup);
-facility.update();babyGroup.updateMatrixWorld(true);
-const wornBounds=new Box3().setFromObject(facility.visual.items[0].root);
+facility.update();babyGroup.updateWorldMatrix(true,true);
+let wornBounds=new Box3().setFromObject(facility.visual.items[0].root);
 assert(wornBounds.min.toArray().every(Number.isFinite)&&wornBounds.max.toArray().every(Number.isFinite),'worn crown follows a finite head anchor');
+assert(wornBounds.min.y<body.center.y+.07,'crown sits down on the head instead of floating high above it');
 
-assert.equal(facility.interact(),false,'taking off is unavailable while still at the table');
+moveBody(body,WEARABLE_TABLE.x+HEAD_WEARABLES[1].slotX,WEARABLE_TABLE.z);
+assert.equal(facility.physics.swapIndex,1,'an equipped item can be swapped for the nearby table item');
+assert.equal(facility.action,'Swap to Top Hat');assert.equal(facility.mobileAction,'Swap to Top Hat');
+assert(facility.interact(),'swap interaction succeeds');
+assert.equal(facility.physics.wornIndex,1);assert.equal(facility.visual.items[1].root.parent,babyGroup,'top hat is now worn');
+assert.equal(facility.visual.items[0].root.parent,facility.visual.group,'previous crown returns to the table');
+assert.equal(facility.visual.items[0].root.position.x,HEAD_WEARABLES[0].slotX,'swapped-off crown returns to its original slot');
+
 let jumpEvents=0;rig.onJump=()=>{jumpEvents++;facility.jumpFromNormalLocomotion();};
 rig.jump();rig.step(PHYS.step);assert.equal(jumpEvents,1,'only the normal locomotion jump emits the accessory event');
 let peak=0;for(let i=0;i<240;i++){facility.step(PHYS.step);peak=Math.max(peak,facility.physics.hopOffset);}
-assert(peak>.023&&peak<.0252,`wearable hop reaches about 2.5 cm (${peak})`);
+assert(peak>.0055&&peak<.0066,`wearable detachment peaks at a few millimetres rather than a self-propelled leap (${peak})`);
 assert.equal(facility.physics.hopOffset,0,'wearable lands back on the head');
 
-moveBody(body,WEARABLE_TABLE.x+.25,WEARABLE_TABLE.z);
-assert(Number.isFinite(facility.interactionDistance));
-assert.equal(facility.action,'Take off Floral Crown');assert.equal(facility.mobileAction,'Take off Floral Crown');
-assert(facility.interact(),'take-off interaction succeeds');
-assert.equal(facility.physics.wornIndex,null);assert.equal(facility.visual.items[0].root.parent,facility.visual.group);
-assert.equal(facility.visual.items[0].root.position.x,HEAD_WEARABLES[0].slotX,'crown returns to its original slot');
+facility.update();
+const beforeTiltUp=objectUp(facility.visual.items[1].root);
+tiltBody(body,.45);facility.update();
+const afterTiltUp=objectUp(facility.visual.items[1].root);
+assert(afterTiltUp.y<beforeTiltUp.y-.04,'worn item rotates in the jelly frame rather than staying world upright');
+assert(afterTiltUp.angleTo(new Vector3(0,1,0))>.08,'worn item visibly follows the jelly tilt');
+
+moveBody(body,BED.x,BED.z);
+const bed=new BedFacility(scene,body,{add(){}});
+assert(bed.interact(),'bed can be entered near the mattress');
+facility.syncBedOccupancy(bed.active);
+assert.equal(facility.physics.wornIndex,null,'going to bed auto-removes the worn item');
+assert.equal(facility.visual.items[1].root.parent,facility.visual.group,'the removed top hat returns to the table');
+assert.equal(facility.visual.items[1].root.position.x,HEAD_WEARABLES[1].slotX,'bed removal parks the hat in its home slot');
+assert(bed.interact(),'bed can be exited');
+assert.equal(facility.physics.wornIndex,null,'getting off bed does not auto-re-equip the item');
 
 const collisionBody=new SoftBody(loadModel()),collisionRig=new Locomotion(collisionBody);
 const collisionFacility=new WearableFacility(new Scene(),collisionBody,new Group(),collisionRig,{add(){}});
-moveBody(collisionBody,WEARABLE_TABLE.x,WEARABLE_TABLE.z-WEARABLE_TABLE.depth/2-.028);
-const before=boxPenetration(collisionBody,collisionFacility.visual.collisionBoxes[0]);
+const frontLeg=collisionFacility.visual.collisionBoxes[1];
+let forwardExtent=-Infinity;
+for(let i=2;i<collisionBody.surface.positions.length;i+=3)forwardExtent=Math.max(forwardExtent,collisionBody.surface.positions[i]-collisionBody.center.z);
+moveBody(collisionBody,frontLeg.center.x,frontLeg.center.z-frontLeg.halfSize.z-forwardExtent+.002);
+const legBefore=boxPenetration(collisionBody,frontLeg);
 collisionFacility.afterStep();collisionBody.updateSurface();
-const after=boxPenetration(collisionBody,collisionFacility.visual.collisionBoxes[0]);
-assert(before>0&&after<1e-7,'table box resolves a shallow approach before the body can pass through');
-collisionFacility.dispose();facility.reset();facility.dispose();
-console.log('Wearable table geometry, selection, head hop, take-off, shadows and collision passed',{peak,before,after});
+const legAfter=boxPenetration(collisionBody,frontLeg);
+assert(legBefore>.001,'front leg test begins with a deliberate shallow surface penetration');
+assert(legAfter<legBefore&&legAfter<.001,'fitted table leg resolves the shallow walk-in contact');
+collisionFacility.dispose();bed.dispose();facility.reset();facility.dispose();
+console.log('Wearable table swapping, tuned fit, head-frame detachment, bed return, shadows and collision passed',{peak,legBefore,legAfter});

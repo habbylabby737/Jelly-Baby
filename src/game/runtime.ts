@@ -47,11 +47,12 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const rig=new Locomotion(body);
   const facilities=new Facilities();
   const wearableTable=new WearableFacility(scene,body,baby.group,rig,facilityShadows);
+  const bed=new BedFacility(scene,body,facilityShadows);
   rig.onJump=()=>wearableTable.jumpFromNormalLocomotion();
   facilities.add(wearableTable);
   facilities.add(new SwingFacility(scene,body,facilityShadows,sound.facility));
   facilities.add(new TrampolineFacility(scene,body,facilityShadows,sound.facility));
-  facilities.add(new BedFacility(scene,body,facilityShadows));
+  facilities.add(bed);
   const flavorPicker=new FlavorPicker(flavor=>{
     baby.setFlavor(flavor);optics.setAbsorption(JELLY_FLAVORS[flavor].absorption);
   });
@@ -107,7 +108,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
       const steps=physicsClock.advance(dt,()=>{
         input.step(PHYS.step);facilities.step(PHYS.step);
         if(!facilities.active)rig.step(PHYS.step);
-        body.step(PHYS.step);facilities.afterStep();input.afterPhysicsStep();
+        body.step(PHYS.step);wearableTable.syncBedOccupancy(bed.active);facilities.afterStep();input.afterPhysicsStep();
         if(!facilities.active)rig.afterStep();
       });
       if(steps&&body.surfaceDirty) {

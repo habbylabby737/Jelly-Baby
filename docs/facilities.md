@@ -102,7 +102,7 @@ clear it.
 dressing table's interaction state, while
 [`src/graphics/wearable-table.ts`](../src/graphics/wearable-table.ts) owns the
 table and the three reference-derived assets. The table is placed at
-`(-.155, .205)` in the same lower-left authored quadrant as the supplied
+`(-.155, .305)` in the same lower-left authored quadrant as the supplied
 layout drawing. Its tabletop, legs, and apron use the swing frame's shared
 procedural timber material. All table and wearable meshes have both shadow
 flags enabled and are registered with the same facility ground and raised
@@ -111,26 +111,14 @@ shadow systems.
 The three equally spaced slots are Floral Crown, Top Hat, and Baseball Cap.
 The asset constructors are kept in the graphics module with their geometry and
 TSL material details ported from `refs/hat_assets.html`; only their uniform
-root scales are tuned to the jelly's head. One simple collision box covers the
-whole table footprint and height. The collision is broad-phase gated near the
-table and resolved against the deformed visible-surface bindings after the
-soft-body solver, so the prompt can appear before physical contact without
-letting the body pass through the asset.
+root scales are tuned to the jelly's head. Five simple collision boxes cover the table: one thin tabletop slab and one fitted box per leg. The collision is broad-phase gated near the table and resolved against the deformed visible-surface bindings after the soft-body solver, so the prompt can appear before physical contact without letting the body pass through the asset.
 
-When the body is grounded and ungrabbed within `.135 m` of an unoccupied slot,
-the nearest slot supplies `Wear <name>` to the shared desktop/touch prompt.
-The selected root is reparented to the baby group and driven by a top-surface
-cage anchor. A worn item is not an active facility, so ordinary movement and
-the camera remain available. After the body leaves the table approach radius,
-the worn item supplies `Take off <name>`; taking it off returns the same root to
-its original table slot. Reset returns every item to the table.
+When the body is grounded and ungrabbed within `.135 m` of an occupied slot, the nearest slot supplies `Wear <name>` when nothing is worn. If an item is already worn and the baby approaches another table item, the prompt instead supplies `Swap to <name>` and interaction returns the current item to its original slot before wearing the new one. A worn item is not an active facility, so ordinary movement and the camera remain available. If no swap target is nearby and the body leaves the table approach radius, the worn item supplies `Take off <name>`. Reset returns every item to the table.
 
 The ordinary locomotion jump emits a dedicated `onJump` event after its Space
 impulse. While a wearable is held, that event launches only the wearable's
 relative one-dimensional hop: fixed-step gravity and an analytically chosen
-initial velocity target `.025 m` above the live head anchor, then settle it back
-onto the head. Facility boarding, trampoline bounces, grabs, and other motion
-never trigger this accessory hop.
+initial velocity target a small `.0065 m` detachment above the live head basis, then settle it back onto the head. Facility boarding, trampoline bounces, grabs, and other motion never trigger this accessory hop. Going to bed automatically returns the currently worn item to its home slot on the table; getting up leaves it there.
 
 ## Trampoline
 

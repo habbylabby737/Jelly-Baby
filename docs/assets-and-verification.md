@@ -81,7 +81,7 @@ The scripts in `package.json` are the supported entry points:
 | `npm run test:swing` | Verify swing behavior and shared facility routing. |
 | `npm run test:trampoline` | Verify trampoline support, rebound, and transitions. |
 | `npm run test:bed` | Verify bed support, blanket settling, sleep/wake, and shadow registration. |
-| `npm run test:wearables` | Verify wearable geometry, slot selection, head hop, take-off, shadows, and table collision. |
+| `npm run test:wearables` | Verify wearable geometry, swap/take-off routing, head-frame fit, bed return, shadow sync, and table collision. |
 | `npm run test:blanket-shadows` | Reproduce curved-blanket shadow acne and verify receiver depths, real blockers, and caching. |
 | `npm run test:facility-collision` | Verify tight facility volumes, surface clearance, and pre-contact hints. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |

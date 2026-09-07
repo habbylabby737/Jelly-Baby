@@ -327,6 +327,7 @@ export class WearableTable {
   readonly collisionBoxes:CollisionBox[]=[];
   readonly items:readonly WearableItem[];
   private readonly slot=new THREE.Vector3();
+  private readonly spin=new THREE.Quaternion();
 
   constructor() {
     this.group.name='head-wearable-table';this.group.position.set(WEARABLE_TABLE.x,0,WEARABLE_TABLE.z);
@@ -334,15 +335,21 @@ export class WearableTable {
     const box=(name:string,width:number,height:number,depth:number,x:number,y:number,z:number)=>{
       const mesh=new THREE.Mesh(new RoundedBoxGeometry(width,height,depth,4,.0018),timber);mesh.name=name;mesh.position.set(x,y,z);mesh.castShadow=mesh.receiveShadow=true;this.group.add(mesh);return mesh;
     };
-    const topThickness=.008,legWidth=.012;
+    const topThickness=.008,legWidth=.012,legHeight=WEARABLE_TABLE.top-.001;
     box('wearable-tabletop',WEARABLE_TABLE.width,topThickness,WEARABLE_TABLE.depth,0,WEARABLE_TABLE.top-topThickness/2,0);
-    for(const x of [-1,1])for(const z of [-1,1])box('wearable-table-leg',legWidth,WEARABLE_TABLE.top-.001,legWidth,x*(WEARABLE_TABLE.width/2-.012),(WEARABLE_TABLE.top-.001)/2,z*(WEARABLE_TABLE.depth/2-.012));
+    for(const x of [-1,1])for(const z of [-1,1])box('wearable-table-leg',legWidth,legHeight,legWidth,x*(WEARABLE_TABLE.width/2-.012),legHeight/2,z*(WEARABLE_TABLE.depth/2-.012));
     for(const z of [-1,1])box('wearable-table-apron',WEARABLE_TABLE.width-.035,.012,.007,0,.044,z*(WEARABLE_TABLE.depth/2-.012));
     for(const x of [-1,1])box('wearable-table-apron',.007,.012,WEARABLE_TABLE.depth-.035,x*(WEARABLE_TABLE.width/2-.012),.044,0);
+    const axisX=new THREE.Vector3(1,0,0),axisY=new THREE.Vector3(0,1,0),axisZ=new THREE.Vector3(0,0,1);
     this.collisionBoxes.push({
-      center:new THREE.Vector3(WEARABLE_TABLE.x,WEARABLE_TABLE.height/2,WEARABLE_TABLE.z),
-      xAxis:new THREE.Vector3(1,0,0),yAxis:new THREE.Vector3(0,1,0),zAxis:new THREE.Vector3(0,0,1),
-      halfSize:new THREE.Vector3(WEARABLE_TABLE.width/2,WEARABLE_TABLE.height/2,WEARABLE_TABLE.depth/2),
+      center:new THREE.Vector3(WEARABLE_TABLE.x,WEARABLE_TABLE.top-topThickness/2,WEARABLE_TABLE.z),
+      xAxis:axisX.clone(),yAxis:axisY.clone(),zAxis:axisZ.clone(),
+      halfSize:new THREE.Vector3(WEARABLE_TABLE.width/2,topThickness/2,WEARABLE_TABLE.depth/2),
+    });
+    for(const x of [-1,1])for(const z of [-1,1])this.collisionBoxes.push({
+      center:new THREE.Vector3(WEARABLE_TABLE.x+x*(WEARABLE_TABLE.width/2-.012),legHeight/2,WEARABLE_TABLE.z+z*(WEARABLE_TABLE.depth/2-.012)),
+      xAxis:axisX.clone(),yAxis:axisY.clone(),zAxis:axisZ.clone(),
+      halfSize:new THREE.Vector3(legWidth/2,legHeight/2,legWidth/2),
     });
 
     const petal=makePetalMaterial(),leaf=makeLeafMaterial(),vine=makeVineMaterial(),pollen=makePollenMaterial();
@@ -360,12 +367,19 @@ export class WearableTable {
 
   setWorn(index:HeadWearableIndex,parent:THREE.Group) {
     const item=this.items[index];parent.attach(item.root);item.root.visible=true;item.root.scale.setScalar(HEAD_WEARABLES[index].scale);
+    item.root.updateWorldMatrix(true,true);
   }
 
-  updateWorn(index:HeadWearableIndex,anchor:THREE.Vector3,yaw:number,hopOffset:number) {
+  updateWorn(index:HeadWearableIndex,position:THREE.Vector3,orientation:THREE.Quaternion) {
     const item=this.items[index],wearable=HEAD_WEARABLES[index];
-    item.root.position.set(anchor.x,anchor.y+wearable.headLift+hopOffset,anchor.z);
-    item.root.rotation.set(0,yaw+wearable.rotationY,0);item.root.scale.setScalar(wearable.scale);item.root.visible=true;
+    item.root.position.copy(position);
+    item.root.quaternion.copy(orientation);
+    if(wearable.rotationY!==0) {
+      this.spin.setFromAxisAngle(UP,wearable.rotationY);
+      item.root.quaternion.multiply(this.spin);
+    }
+    item.root.scale.setScalar(wearable.scale);item.root.visible=true;
+    item.root.updateWorldMatrix(true,true);
   }
 
   setOnTable(index:HeadWearableIndex) {this.placeOnTable(index);}
@@ -376,6 +390,7 @@ export class WearableTable {
     const item=this.items[index],wearable=HEAD_WEARABLES[index];
     this.group.attach(item.root);this.slot.set(wearable.slotX,WEARABLE_TABLE.top+wearable.tableLift,0);
     item.root.position.copy(this.slot);item.root.rotation.set(0,wearable.rotationY,0);item.root.scale.setScalar(wearable.scale);item.root.visible=true;
+    item.root.updateWorldMatrix(true,true);
   }
 
   dispose() {

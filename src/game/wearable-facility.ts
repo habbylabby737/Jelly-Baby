@@ -1,4 +1,4 @@
-import { Box3, Vector3, type Group, type Scene } from 'three/webgpu';
+import { Box3, Quaternion, Vector3, type Group, type Scene } from 'three/webgpu';
 import type { FacilityShadows } from '../graphics/facility-shadows.ts';
 import type { SoftBody } from '../physics/soft-body.js';
 import { FacilityCollision } from '../physics/facility-collision.ts';
@@ -15,16 +15,16 @@ export class WearableFacility implements Facility {
   readonly visual:WearableTable;
   private readonly collision:FacilityCollision;
   private readonly babyGroup:Group;
-  private readonly rig:Locomotion;
-  private readonly anchor=new Vector3();
+  private readonly headPosition=new Vector3();
+  private readonly headOrientation=new Quaternion();
 
   constructor(scene:Scene,body:SoftBody,babyGroup:Group,rig:Locomotion,shadows:FacilityShadows) {
     this.physics=new WearablePhysics(body);this.visual=new WearableTable();this.collision=new FacilityCollision(body);
-    this.babyGroup=babyGroup;this.rig=rig;scene.add(this.visual.group);
+    this.babyGroup=babyGroup;void rig;scene.add(this.visual.group);
     // The table's wearables can travel with the baby across the play area. The
     // broad, fixed envelope keeps both ground and raised-surface shadow maps
-    // valid while the item is worn, including its 2.5 cm hop.
-    shadows.add(this.visual.group,new Box3(new Vector3(-.32,0,-.18),new Vector3(.32,.18,.36)));
+    // valid while the item is worn, including its short local head detachment.
+    shadows.add(this.visual.group,new Box3(new Vector3(-.32,0,-.28),new Vector3(.32,.18,.46)));
   }
 
   get active() {return false;}
@@ -32,19 +32,31 @@ export class WearableFacility implements Facility {
   get interactionDistance() {return this.physics.interactionDistance;}
 
   get action() {
-    if(this.physics.wornIndex!==null)return `Take off ${HEAD_WEARABLES[this.physics.wornIndex].label}`;
+    if(this.physics.wornIndex!==null) {
+      const swap=this.physics.swapIndex;
+      return swap===-1?`Take off ${HEAD_WEARABLES[this.physics.wornIndex].label}`:`Swap to ${HEAD_WEARABLES[swap].label}`;
+    }
     const index=this.physics.availableIndex;
     return index===-1?'Wear':`Wear ${HEAD_WEARABLES[index].label}`;
   }
 
   get mobileAction() {
-    if(this.physics.wornIndex!==null)return `Take off ${HEAD_WEARABLES[this.physics.wornIndex].label}`;
+    if(this.physics.wornIndex!==null) {
+      const swap=this.physics.swapIndex;
+      return swap===-1?`Take off ${HEAD_WEARABLES[this.physics.wornIndex].label}`:`Swap to ${HEAD_WEARABLES[swap].label}`;
+    }
     const index=this.physics.availableIndex;
     return index===-1?'Wear':`Wear ${HEAD_WEARABLES[index].label}`;
   }
 
   interact() {
     if(this.physics.wornIndex!==null) {
+      const swap=this.physics.swapIndex;
+      if(swap!==-1) {
+        const previous=this.physics.swap(swap);
+        if(previous===-1)return false;
+        this.visual.setOnTable(previous);this.visual.setWorn(swap,this.babyGroup);return true;
+      }
       const index=this.physics.takeOff();
       if(index===-1)return false;
       this.visual.setOnTable(index);return true;
@@ -64,11 +76,19 @@ export class WearableFacility implements Facility {
   update() {
     const index=this.physics.wornIndex;
     if(index===null)return;
-    this.physics.headAnchor(this.anchor);this.visual.updateWorn(index,this.anchor,this.rig.yaw,this.physics.hopOffset);
+    this.physics.headPlacement(index,this.headPosition,this.headOrientation);
+    this.visual.updateWorn(index,this.headPosition,this.headOrientation);
   }
 
   /** Ordinary locomotion calls this only for its own Space jump impulse. */
   jumpFromNormalLocomotion() {this.physics.jumpFromNormalLocomotion();}
+
+  /** Beds remove a worn item immediately and leave it parked back on the table. */
+  syncBedOccupancy(active:boolean) {
+    if(!active)return;
+    const index=this.physics.returnToTable();
+    if(index!==-1)this.visual.setOnTable(index);
+  }
 
   reset() {this.physics.reset();this.visual.reset();}
   dispose() {this.visual.dispose();}
