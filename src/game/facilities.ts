@@ -5,6 +5,9 @@ export interface Facility {
   /** Distance to an available interaction, or Infinity when unavailable. */
   readonly interactionDistance:number;
   readonly laughing?:boolean;
+  readonly sleeping?:boolean;
+  readonly action?:string;
+  readonly mobileAction?:string;
   readonly cameraDistance?:number;
   interact():boolean;
   step(h:number):void;
@@ -52,10 +55,11 @@ export class Facilities {
     for(const item of this.items)item.update();
     const candidate=this.candidate;this.prompt.hidden=!candidate;
     if(!candidate)return;
-    const action=candidate.active?`Get Off ${candidate.label}`:`Play ${candidate.label}`;
+    const action=candidate.action??(candidate.active?`Get Off ${candidate.label}`:`Play ${candidate.label}`);
     const hint=`Press E to ${action}`;
     if(this.hint.textContent!==hint)this.hint.textContent=hint;
-    if(this.button.textContent!==action)this.button.textContent=action;
+    const mobileAction=candidate.mobileAction??action;
+    if(this.button.textContent!==mobileAction)this.button.textContent=mobileAction;
   }
   reset() {for(const item of this.items)item.reset();this.prompt.hidden=true;}
   dispose() {this.abort.abort();this.prompt.remove();for(const item of this.items)item.dispose();}

@@ -121,6 +121,11 @@ states over the resting smile:
 - an active facility can hold the laugh state once its physics threshold is
   crossed.
 
+The bed supplies an independent sleep blend with curved closed eyelids,
+relaxed brows, a small mouth, and a fading tongue. A damped translucent bubble
+attaches at the nose through the deformed skin sampler. Wake reverses the blend
+and deflates the bubble. See [Bed and sleeping](bed-and-sleeping.md).
+
 The face updates only when the body surface or expression state needs it, but
 its animation clock continues through sleeping physics so a resting baby can
 blink.

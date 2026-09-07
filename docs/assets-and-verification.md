@@ -76,9 +76,11 @@ The scripts in `package.json` are the supported entry points:
 | `npm run typecheck` | Run TypeScript with `noEmit`. |
 | `npm run build:model` | Regenerate the packed model assets. |
 | `npm run build:kernel` | Rebuild and embed the WebAssembly soft-body kernel. |
-| `npm run test:physics` | Run the broad physics/rendering/optics regression. |
+| `npm run test:physics` | Run the broad physics/rendering/optics regression, followed by bed and blanket coverage. |
 | `npm run test:swing` | Verify swing behavior and shared facility routing. |
 | `npm run test:trampoline` | Verify trampoline support, rebound, and transitions. |
+| `npm run test:bed` | Verify bed support, blanket settling, sleep/wake, and shadow registration. |
+| `npm run test:blanket-shadows` | Reproduce curved-blanket shadow acne and verify receiver depths, real blockers, and caching. |
 | `npm run test:facility-collision` | Verify tight facility volumes, surface clearance, and pre-contact hints. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
 | `npm run test:facility-sound` | Verify motion-event timing and procedural audio. |

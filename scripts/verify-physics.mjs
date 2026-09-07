@@ -46,7 +46,13 @@ for(const object of baby.group.children)if(object!==baby.mesh) {
 }
 const skin=new SurfaceBVH(body.surface);
 let minimumClearance=Infinity;
-for(const object of baby.group.children)if(object!==baby.mesh) {
+// Ink is baked onto skin vertices. The sleeping bubble is a separate volume
+// attached by its object transform, so its local sphere is not skin artwork.
+const artwork=baby.face.details.map(detail=>detail.mesh);
+assert.equal(artwork.length,8,'all original facial details remain covered');
+const sleepBubble=baby.group.getObjectByName('sleep-bubble');
+assert(sleepBubble&&!sleepBubble.visible,'the sleeping bubble is hidden while awake');
+for(const object of artwork) {
   const p=object.geometry.attributes.position.array,index=object.geometry.index.array;
   for(let i=0;i<index.length;i+=3) {
     const ids=[index[i]*3,index[i+1]*3,index[i+2]*3];
@@ -172,3 +178,5 @@ assert.equal(optics.lightTexture,optics.causticTarget.texture,'table samples the
 assert(optics.frontTarget&&optics.backTarget&&optics.rawCausticTarget,'GPU caustic light-space targets are configured');
 optics.dispose();
 console.log('PASS — settle, walk, turn, jump, grab, release, recovery, optical shadow/thickness and GPU caustic graph; seconds:',(performance.now()-started)/1000);
+// Keep facility coverage modular while including the bed in the main command.
+await import('./verify-bed.mjs');

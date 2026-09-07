@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { SoftBody } from '../physics/soft-body.js';
 import { refinePatch } from './surface-details.ts';
 import { FaceSkin } from './face-skin.ts';
+import { SleepBubble } from './sleep-bubble.ts';
 import { FaceExpression } from './face-expression.ts';
 
 type Feature='eye'|'blush'|'brow'|'mouth'|'tongue';
@@ -16,10 +17,13 @@ export class BabyFace {
   private lastBlink=-1;
   private lastSob=-1;
   private lastLaugh=-1;
+  private lastSleep=-1;
+  private readonly bubble:SleepBubble;
   private readonly body:SoftBody;
   constructor(body:SoftBody,group:THREE.Group) {
     this.body=body;
     this.skin=new FaceSkin(body);
+    this.bubble=new SleepBubble(group);
     const eye=new THREE.MeshPhysicalNodeMaterial({color:'#142905',roughness:.13,clearcoat:1,clearcoatRoughness:.06});
     const mouth=new THREE.MeshPhysicalNodeMaterial({color:'#254508',roughness:.24,clearcoat:.6});
     const tongue=new THREE.MeshPhysicalNodeMaterial({color:'#b5d641',roughness:.24,clearcoat:.5});
@@ -48,16 +52,18 @@ export class BabyFace {
     const lip=new THREE.Shape();lip.absellipse(0,0,.0024,.00125,0,Math.PI*2,false,0);
     add(refinePatch(new THREE.ShapeGeometry(lip,24)),tongue,0,.0368,.00028,'tongue');
   }
-  reset() { this.expression.reset(); }
-  update(dt:number,playing=false) {
-    this.expression.update(dt,this.body.grabs.length>0,playing);
-    const {sob,laugh,blink,time}=this.expression;
+  reset() { this.expression.reset();this.bubble.reset(); }
+  update(dt:number,playing=false,sleeping=false) {
+    this.expression.update(dt,this.body.grabs.length>0,playing,sleeping);
+    const {sob,laugh,blink,time,sleep}=this.expression;
+    this.bubble.update(dt,sleep,time,this.skin);
     const version=this.body.surface.geometry.attributes.position.version;
-    if(version===this.surfaceVersion&&blink===this.lastBlink&&sob===this.lastSob&&laugh===this.lastLaugh&&sob===0&&laugh===0)return;
-    this.surfaceVersion=version;this.lastBlink=blink;this.lastSob=sob;this.lastLaugh=laugh;
+    if(sleep===0&&this.lastSleep===0&&version===this.surfaceVersion&&blink===this.lastBlink&&sob===this.lastSob&&laugh===this.lastLaugh&&sob===0&&laugh===0)return;
+    this.lastSleep=sleep;this.surfaceVersion=version;this.lastBlink=blink;this.lastSob=sob;this.lastLaugh=laugh;
     const quiver=Math.sin(time*33)*.00022*sob;
     const chuckle=(.5+.5*Math.sin(time*19))*laugh;
     for(const {mesh,rest,cx,cy,depth,kind} of this.details) {
+      if(kind==='tongue')(mesh.material as THREE.Material).opacity=1-sleep;
       const positions=mesh.geometry.getAttribute('position');
       for(let i=0;i<positions.count;i++) {
         let x=rest[i*3],y=rest[i*3+1],z=rest[i*3+2];
@@ -68,17 +74,18 @@ export class BabyFace {
           const squeezedX=x*.38+Math.sign(cx)*(.0055*Math.abs(y/.0043)-.0028);
           const squeezedY=y*.67+quiver*.35;
           const squeezedZ=z*.20;
-          const close=Math.max(blink,laugh*.90);
+          const close=Math.max(blink*(1-sleep),laugh*.90,sleep);
           y*=1-close*.94;z*=1-close*.88;
           // Idle blinks and giggles blend into the grabbed > < silhouette.
           y+=(1-Math.min(1,(x/.00325)**2))*laugh*.00125;
+          y-=sleep*(1-Math.min(1,(x/.00325)**2))*.0010;
           x+=(squeezedX-x)*sob;
           y+=(squeezedY-y)*sob;
           z+=(squeezedZ-z)*sob;
         } else if(kind==='brow') {
           const inner=-Math.sign(cx)*x/.0021;
           y+=sob*(.0006+inner*.0011)+laugh*.00055;
-          y+=quiver*.6;
+          y+=quiver*.6-sleep*.0013;
         } else if(kind==='mouth'||kind==='tongue') {
           // Transform mouth and tongue in one shared frame to keep the tongue inside.
           y+=cy-.0389;
@@ -86,6 +93,8 @@ export class BabyFace {
           y*=1-sob*.48+chuckle*.32;
           y+=sob*(.0011-.0030*(x/.0046)**2)+quiver;
           y-=laugh*.0003;
+          x*=1-sleep*.57;
+          y*=1-sleep*.62;
           y-=cy-.0389;
         } else {
           y+=laugh*.00065+sob*.00025;

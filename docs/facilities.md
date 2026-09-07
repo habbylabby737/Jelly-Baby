@@ -29,7 +29,10 @@ the locomotion rig, and unlocks audio. All facilities still receive fixed-step
 updates, so an inactive swing can coast while another facility is active, but
 only the active facility gets body-control ownership.
 
-The manager renders `Play <label>` or `Get Off <label>` and hides the prompt when
+The manager defaults to `Play <label>` or `Get Off <label>`. Optional `action`
+and `mobileAction` supply facility-specific verbs. The bed also supplies
+`sleeping` for its facial expression. See [Bed and sleeping](bed-and-sleeping.md)
+for placement, support, blanket, and expression design. The prompt hides when
 there is no finite candidate. Reset clears every facility and hides the prompt;
 dispose aborts the manager's listeners, removes the prompt, and disposes every
 registered facility.
@@ -203,6 +206,13 @@ resolution changes. Each of the nine lookups interpolates four depth comparisons
 so subtexel motion stays smooth. Depth itself is never linearly filtered across
 unrelated surfaces.
 This path leaves the existing table masks and caustics unchanged.
+
+Curved receivers may opt into an additional per-mesh receiver-depth map via
+`curvedShadowReceiver`. The blanket uses this to sample its actual surface at
+the wide filter taps instead of extending one triangle's plane across the
+curved skirt. Center-depth separation preserves overlapping self-occlusion;
+other receivers retain the existing plane-corrected path. See
+[Bed and sleeping](bed-and-sleeping.md) for the contact and shading details.
 
 ## Facility sound hooks
 

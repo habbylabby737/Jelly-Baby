@@ -19,6 +19,7 @@ import { Facilities } from './facilities.ts';
 import { SwingFacility } from './swing-facility.ts';
 import { FacilityShadows } from '../graphics/facility-shadows.ts';
 import { LightingMode } from './lighting-mode.ts';
+import { BedFacility } from './bed-facility.ts';
 import { TrampolineFacility } from './trampoline-facility.ts';
 
 export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
@@ -46,6 +47,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const facilities=new Facilities();
   facilities.add(new SwingFacility(scene,body,facilityShadows,sound.facility));
   facilities.add(new TrampolineFacility(scene,body,facilityShadows,sound.facility));
+  facilities.add(new BedFacility(scene,body,facilityShadows));
   const flavorPicker=new FlavorPicker(flavor=>{
     baby.setFlavor(flavor);optics.setAbsorption(JELLY_FLAVORS[flavor].absorption);
   });
@@ -108,7 +110,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
         if(!body.isFinite())throw new Error('The soft-body simulation produced an invalid state');
         body.updateSurface();
       }
-      facilities.update();baby.update(dt,facilities.active?.laughing??false);
+      facilities.update();baby.update(dt,facilities.active?.laughing??false,facilities.active?.sleeping??false);
       facilityShadows.update(renderer);
       facilityShadows.surfaces.update(renderer);
       input.update(dt);

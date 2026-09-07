@@ -12,6 +12,8 @@
     "test:physics": "node --experimental-strip-types scripts/verify-physics.mjs",
     "test:swing": "node --experimental-strip-types scripts/verify-swing.mjs",
     "test:trampoline": "node --experimental-strip-types scripts/verify-trampoline.mjs",
+    "test:bed": "node --experimental-strip-types scripts/verify-bed.mjs",
+    "test:blanket-shadows": "node --experimental-strip-types scripts/verify-blanket-shadows.mjs",
     "test:facility-collision": "node --experimental-strip-types scripts/verify-facility-collision.mjs",
     "test:lighting": "node --experimental-strip-types scripts/verify-lighting.mjs",
     "test:facility-shadows": "node --experimental-strip-types scripts/verify-facility-shadows.mjs",

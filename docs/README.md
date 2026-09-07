@@ -1,8 +1,8 @@
 # Jelly Baby documentation
 
 This directory describes the running project as it exists in the repository. The
-game is a WebGPU-only Three.js experience: one small soft body, a tabletop, two
-play facilities, and a deliberately measured optical treatment.
+game is a WebGPU-only Three.js experience: one small soft body, a tabletop, three
+facilities, and a deliberately measured optical treatment.
 
 ## Documentation map
 
@@ -17,7 +17,9 @@ play facilities, and a deliberately measured optical treatment.
 - [Optical transport](optical-transport.md) — GPU caustics, worker-backed
   thickness/shadow transport, the optical proxy, and the approximation budget.
 - [Facilities](facilities.md) — the shared facility contract, swing,
-  trampoline, collisions, facility shadows, and extension points.
+  trampoline, bed, collisions, facility shadows, and extension points.
+- [Bed and sleeping](bed-and-sleeping.md) — reclining support, blanket physics,
+  and sleepy facial performance.
 - [Input, audio, and UI](input-audio-ui.md) — desktop and touch controls,
   picking, camera behavior, flavor selection, facial animation, sound, and
   responsive presentation.

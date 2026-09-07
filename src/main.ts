@@ -22,7 +22,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
     <span class="separator"></span><kbd class="space-key">space</kbd><span class="hint-label">hop</span>
     <span class="separator"></span><svg class="mouse" viewBox="0 0 20 25" fill="none" stroke="currentColor"><rect x="3.5" y="1.5" width="13" height="21" rx="6.5"/><path d="M10 5v5"/></svg><span class="hint-label">orbit · grab</span>
   </footer>
-  <div class="specimen"><span></span> lime &nbsp; / &nbsp; 7 cm of happiness</div>
   <div class="touch-controls" aria-label="Touch controls">
     <button class="joystick" data-joystick type="button" aria-label="Move">
       <span class="joystick-track" aria-hidden="true"></span>

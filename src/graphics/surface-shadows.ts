@@ -3,6 +3,7 @@ import { Fn, float, normalWorldGeometry, positionWorld, texture, uniform, vec2, 
 
 export const SURFACE_SHADOW_SIZE=2048;
 export const SURFACE_SHADOW_BIAS=.0002; // metres, independent of the fitted depth range
+type ReceiverDepth={source:THREE.Mesh;proxy:THREE.Mesh;scene:THREE.Scene;target:THREE.RenderTarget;dirty:boolean};
 
 /** Local window occlusion between raised surfaces, independent of table masks. */
 export class SurfaceShadows {
@@ -20,6 +21,7 @@ export class SurfaceShadows {
   private readonly bounds=new THREE.Box3();
   private readonly casters:{source:THREE.Mesh;proxy:THREE.Mesh;version:number}[]=[];
   private readonly receivers=new Set<THREE.NodeMaterial>();
+  private readonly receiverDepths:ReceiverDepth[]=[];
   private facilityDirty=true;
   private babyDirty=true;
   private readonly windowFraction=uniform(0);
@@ -64,6 +66,7 @@ export class SurfaceShadows {
     this.depthBiasNode.value=SURFACE_SHADOW_BIAS/(this.camera.far-this.camera.near);
     this.camera.updateProjectionMatrix();
     this.matrixNode.value.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+    for(const receiver of this.receiverDepths)receiver.dirty=true;
   }
 
   addBaby(mesh:THREE.Mesh) {this.register(mesh,this.baby,false);this.babyDirty=true;}
@@ -75,7 +78,7 @@ export class SurfaceShadows {
     this.filterZNode.value.set(m[8],-m[9]).multiplyScalar(.5*span.y*1.5/512);
   }
 
-  private occlusion(target:THREE.RenderTarget) {
+  private occlusion(target:THREE.RenderTarget,receiverTarget?:THREE.RenderTarget) {
     return Fn(()=>{
       const clip=this.matrixNode.mul(vec4(positionWorld,1)).toVar();
       const uv=clip.xy.mul(vec2(.5,-.5)).add(.5).toVar();
@@ -88,6 +91,25 @@ export class SurfaceShadows {
       const safeDeterminant=determinant.greaterThanEqual(0).select(determinant.max(1e-12),determinant.min(-1e-12));
       const gradient=vec2(dy.y.mul(dz.x).sub(dx.y.mul(dz.y)),dx.x.mul(dz.y).sub(dy.x.mul(dz.x)))
         .div(safeDeterminant).toVar();
+      // A tangent plane is valid within a texel, not across a curved blanket.
+      // Anchor to its own rasterized depth, then use actual receiver depths at
+      // the wide PCF taps. Retain the center's depth separation so folds can
+      // still shadow themselves rather than excluding this caster entirely.
+      const separation=float(0).toVar();
+      if(receiverTarget){
+        const centerBase=uv.mul(SURFACE_SHADOW_SIZE).sub(.5).floor();
+        const anchor=float(-1).toVar();
+        // A nearest texel can belong to the next triangle on a curved ridge.
+        // Use the conservative envelope of the four surrounding planes so a
+        // triangle-boundary mismatch does not turn into false self separation.
+        for(let y=0;y<2;y++)for(let x=0;x<2;x++){
+          const sampleUV=centerBase.add(vec2(x,y)).add(.5).div(SURFACE_SHADOW_SIZE);
+          const own=texture(receiverTarget.texture,sampleUV).r;
+          const predicted=own.add(gradient.dot(uv.sub(sampleUV)));
+          anchor.assign(own.lessThan(1).select(anchor.max(predicted),anchor));
+        }
+        separation.assign(anchor.greaterThanEqual(0).select(clip.z.sub(anchor).max(0),0));
+      }
       const mask=float(0).toVar();
       for(let z=-1;z<=1;z++)for(let x=-1;x<=1;x++) {
         const sampleUV=uv.add(this.filterXNode.mul(x)).add(this.filterZNode.mul(z));
@@ -98,7 +120,9 @@ export class SurfaceShadows {
         for(let by=0;by<=1;by++)for(let bx=0;bx<=1;bx++) {
           const tapUV=base.add(vec2(bx,by)).add(.5).div(SURFACE_SHADOW_SIZE);
           const depth=texture(target.texture,tapUV).r;
-          const receiverDepth=clip.z.add(gradient.dot(tapUV.sub(uv))).sub(this.depthBiasNode);
+          const planeDepth=clip.z.add(gradient.dot(tapUV.sub(uv)));
+          const ownDepth=receiverTarget?texture(receiverTarget.texture,tapUV).r:float(1);
+          const receiverDepth=(receiverTarget?ownDepth.lessThan(1).select(ownDepth.add(separation),planeDepth):planeDepth).sub(this.depthBiasNode);
           const weight=(bx?fraction.x:fraction.x.oneMinus()).mul(by?fraction.y:fraction.y.oneMinus()).mul(tentWeight);
           const tapInside=tapUV.x.greaterThan(0).and(tapUV.x.lessThan(1)).and(tapUV.y.greaterThan(0)).and(tapUV.y.lessThan(1));
           mask.addAssign(float(receiverDepth.greaterThan(depth).and(tapInside)).mul(weight));
@@ -112,11 +136,19 @@ export class SurfaceShadows {
     const proxy=new THREE.Mesh(source.geometry,this.material);
     proxy.matrixAutoUpdate=false;proxy.frustumCulled=false;scene.add(proxy);
     this.casters.push({source,proxy,version:-1});
+    let receiverTarget:THREE.RenderTarget|undefined;
+    if(source.userData.curvedShadowReceiver){
+      receiverTarget=this.facilityTarget.clone();
+      const receiverScene=new THREE.Scene();receiverScene.background=new THREE.Color(1,1,1);
+      const receiverProxy=new THREE.Mesh(source.geometry,this.material);
+      receiverProxy.matrixAutoUpdate=false;receiverProxy.frustumCulled=false;receiverScene.add(receiverProxy);
+      this.receiverDepths.push({source,proxy:receiverProxy,scene:receiverScene,target:receiverTarget,dirty:true});
+    }
     for(const material of Array.isArray(source.material)?source.material:[source.material]) {
       if(!(material instanceof THREE.NodeMaterial)||this.receivers.has(material))continue;
       this.receivers.add(material);
-      let visibility=this.occlusion(this.facilityTarget).oneMinus();
-      if(receiveBaby)visibility=visibility.mul(this.occlusion(this.babyTarget).oneMinus());
+      let visibility=this.occlusion(this.facilityTarget,receiverTarget).oneMinus();
+      if(receiveBaby)visibility=visibility.mul(this.occlusion(this.babyTarget,receiverTarget).oneMinus());
       const facing=normalWorldGeometry.dot(this.directionNode).max(0);
       const attenuation=float(1).sub(visibility.oneMinus().mul(this.windowFraction).mul(facing));
       // Use the physical material's indirect-light occlusion path. Multiplying
@@ -136,18 +168,23 @@ export class SurfaceShadows {
       if(version===caster.version&&caster.proxy.matrix.equals(caster.source.matrixWorld)&&caster.proxy.visible===visible)continue;
       caster.version=version;caster.proxy.matrix.copy(caster.source.matrixWorld);
       caster.proxy.matrixWorldNeedsUpdate=true;caster.proxy.visible=visible;
+      for(const receiver of this.receiverDepths)if(receiver.source===caster.source){
+        receiver.proxy.matrix.copy(caster.source.matrixWorld);receiver.proxy.matrixWorldNeedsUpdate=true;receiver.proxy.visible=visible;receiver.dirty=true;
+      }
       if(caster.proxy.parent===this.facilities)this.facilityDirty=true;else this.babyDirty=true;
     }
-    if(!this.facilityDirty&&!this.babyDirty)return;
+    if(!this.facilityDirty&&!this.babyDirty&&!this.receiverDepths.some(receiver=>receiver.dirty))return;
     const previous=renderer.getRenderTarget(),autoClear=renderer.autoClear;
     try {
       renderer.autoClear=true;
+      for(const receiver of this.receiverDepths)if(receiver.dirty){renderer.setRenderTarget(receiver.target);renderer.render(receiver.scene,this.camera);receiver.dirty=false;}
       if(this.facilityDirty){renderer.setRenderTarget(this.facilityTarget);renderer.render(this.facilities,this.camera);this.facilityDirty=false;}
       if(this.babyDirty){renderer.setRenderTarget(this.babyTarget);renderer.render(this.baby,this.camera);this.babyDirty=false;}
     } finally {renderer.setRenderTarget(previous);renderer.autoClear=autoClear;}
   }
 
   dispose() {
+    for(const receiver of this.receiverDepths){receiver.scene.clear();receiver.target.dispose();}this.receiverDepths.length=0;
     this.facilities.clear();this.baby.clear();this.casters.length=0;this.receivers.clear();
     this.material.dispose();this.facilityTarget.dispose();this.babyTarget.dispose();
   }

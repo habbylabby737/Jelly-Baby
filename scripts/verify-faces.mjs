@@ -41,13 +41,23 @@ face.reset();face.update(0);
 group.children.forEach((mesh,i)=>assert.deepEqual(mesh.geometry.attributes.position.array,baseline[i]));
 // Any expression must move with the skin, including a sleeping body's rigid motion.
 body.grabs=[{}];for(let i=0;i<60;i++)face.update(1/60);
-const before=group.children.map(mesh=>mesh.geometry.attributes.position.array.slice());
+const attachedDetails=face.details.map(detail=>detail.mesh);
+const before=attachedDetails.map(mesh=>mesh.geometry.attributes.position.array.slice());
 for(let i=0;i<body.x.length;i+=3){body.x[i]+=.02;body.x[i+1]+=.01;body.x[i+2]-=.03;}
 body.updateSurface();face.update(0);
-group.children.forEach((mesh,j)=>{
+attachedDetails.forEach((mesh,j)=>{
   const p=mesh.geometry.attributes.position.array;
   for(let i=0;i<p.length;i++)assert(Math.abs(p[i]-before[j][i]-[.02,.01,-.03][i%3])<2e-8,'expression follows skin');
 });
+// The volumetric bubble follows the nose by object transform, not baked vertices.
+body.grabs=[];for(let frame=0;frame<240;frame++)face.update(1/60,false,true);
+const bubble=group.children.find(mesh=>mesh.name==='sleep-bubble');assert(bubble.visible);
+const noseBefore=bubble.position.clone();
+for(let i=0;i<body.x.length;i+=3)body.x[i]+=.01;
+body.updateSurface();face.update(0,false,true);
+assert(Math.abs(bubble.position.x-noseBefore.x-.01)<2e-8);
+for(let frame=0;frame<240;frame++)face.update(1/60);
+assert(!bubble.visible,'wake deflates the bubble');
 const expression=new FaceExpression();
 // Stretch and shear the skin, then exercise every part of the performance on it.
 for(let i=0;i<body.x.length;i+=3) {
