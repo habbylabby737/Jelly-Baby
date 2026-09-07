@@ -23,14 +23,14 @@ shadows.add(group,envelope);shadows.surfaces.addBaby(mesh);
 const originalUV=shadows.worldToUVNode.value.clone(),originalMatrix=shadows.surfaces.matrixNode.value.clone();
 let count=0;
 const renderer={target:null,autoClear:false,getRenderTarget(){return this.target;},setRenderTarget(target){this.target=target;},render(){count++;}};
-shadows.update(renderer);shadows.surfaces.update(renderer);
+let shadowSyncRevision=shadows.update(renderer);shadows.surfaces.update(renderer,shadowSyncRevision);
 assert.equal(count,3);
 for(const [direction,fraction] of [[night.incoming,night.windowFraction],[day,.7]]) {
   shadows.setLighting(direction,fraction);
   const before=count;
-  shadows.update(renderer);shadows.surfaces.update(renderer);
+  shadowSyncRevision=shadows.update(renderer);shadows.surfaces.update(renderer,shadowSyncRevision);
   assert.equal(count-before,3,'a lighting change invalidates all three shadow maps even with stationary geometry');
-  shadows.update(renderer);shadows.surfaces.update(renderer);
+  shadowSyncRevision=shadows.update(renderer);shadows.surfaces.update(renderer,shadowSyncRevision);
   assert.equal(count-before,3,'unchanged lighting and geometry remain cached');
   assert.equal(shadows.surfaces.windowFraction.value,fraction);
   assert(shadows.surfaces.directionNode.value.clone().negate().distanceTo(direction)<1e-12);

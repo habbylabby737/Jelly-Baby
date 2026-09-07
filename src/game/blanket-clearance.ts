@@ -8,12 +8,25 @@ export class BlanketClearance {
   private readonly a=new Float64Array(30);
   private readonly b=new Float64Array(30);
   private readonly source=new Float64Array(9);
+  private readonly distances=new Float64Array(10);
   private projected=new Float64Array(0);
   private clip(input:Float64Array,count:number,output:Float64Array,nx:number,nz:number,offset:number){
+    let allInside=true,allOutside=true;
+    for(let i=0;i<count;i++){
+      const j=i*3,d=input[j]*nx+input[j+2]*nz-offset;
+      this.distances[i]=d;
+      if(d<0)allInside=false;
+      else allOutside=false;
+    }
+    if(allInside){
+      output.set(input.subarray(0,count*3),0);
+      return count;
+    }
+    if(allOutside)return 0;
     let size=0;
     for(let i=0;i<count;i++){
-      const j=i*3,k=((i+count-1)%count)*3;
-      const d=input[j]*nx+input[j+2]*nz-offset,e=input[k]*nx+input[k+2]*nz-offset;
+      const j=i*3,previous=(i+count-1)%count,k=previous*3;
+      const d=this.distances[i],e=this.distances[previous];
       if((d>=0)!==(e>=0)){
         const t=e/(e-d);
         for(let axis=0;axis<3;axis++)output[size*3+axis]=input[k+axis]+t*(input[j+axis]-input[k+axis]);
@@ -43,8 +56,11 @@ export class BlanketClearance {
           // Clip the skin triangle to this cell, then to each actual fabric triangle.
           this.a.set(this.source);let count=3;
           count=this.clip(this.a,count,this.b,1,0,x);
+          if(!count)continue;
           count=this.clip(this.b,count,this.a,-1,0,-x-1);
+          if(!count)continue;
           count=this.clip(this.a,count,this.b,0,1,z);
+          if(!count)continue;
           count=this.clip(this.b,count,this.a,0,-1,-z-1);
           if(!count)continue;
           for(let half=0;half<2;half++){

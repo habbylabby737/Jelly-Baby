@@ -14,6 +14,11 @@ export class SwingPhysics {
   private elapsed=0;
   private readonly target=new Vector3();
   private readonly seatInertia=SWING.seatMass*SWING.length**2;
+  private readonly targetX:Float64Array;
+  private readonly localY:Float64Array;
+  private readonly localZ:Float64Array;
+  private readonly stiffness:Float64Array;
+  private readonly damping:Float64Array;
   readonly body:SoftBody;
   /** Finite rotational response for the empty seat when it hits the body. */
   readonly seatCollisionMotion:CollisionMotion={
@@ -29,7 +34,20 @@ export class SwingPhysics {
       this.speed+=(iy*angleJacobianY+iz*angleJacobianZ)/this.seatInertia;
     },
   };
-  constructor(body:SoftBody) {this.body=body;}
+  constructor(body:SoftBody) {
+    this.body=body;
+    const count=body.mass.length;
+    this.targetX=new Float64Array(count);this.localY=new Float64Array(count);this.localZ=new Float64Array(count);
+    this.stiffness=new Float64Array(count);this.damping=new Float64Array(count);
+    for(let i=0;i<count;i++){
+      const j=i*3,support=Math.max(0,1-body.rest[j+1]/.027);
+      this.targetX[i]=SWING.x+body.rest[j];
+      this.localY[i]=body.rest[j+1]+.004-SWING.length;
+      this.localZ[i]=body.rest[j+2];
+      this.stiffness[i]=650+support*6500;
+      this.damping[i]=22+support*65;
+    }
+  }
   get nearby() {
     return !this.body.grab&&this.body.grounded&&Math.hypot(this.body.center.x-SWING.x,this.body.center.z-SWING.z)<SWING.interactionRadius;
   }
@@ -38,12 +56,13 @@ export class SwingPhysics {
     if(!this.nearby)return false;
     this.riding=true;this.elapsed=0;
     // Board at the current seat position, including an empty swing still coasting.
+    const c=Math.cos(this.angle),s=Math.sin(this.angle);
     for(let i=0;i<this.body.mass.length;i++) {
-      this.riderTarget(i,this.target);
-      this.body.x.set(this.target.toArray(),i*3);
-      this.body.velocity[i*3]=0;
-      this.body.velocity[i*3+1]=this.speed*(this.target.z-SWING.z);
-      this.body.velocity[i*3+2]=-this.speed*(this.target.y-SWING.height);
+      const j=i*3;this.riderTarget(i,this.target,c,s);
+      this.body.x[j]=this.target.x;this.body.x[j+1]=this.target.y;this.body.x[j+2]=this.target.z;
+      this.body.velocity[j]=0;
+      this.body.velocity[j+1]=this.speed*(this.target.z-SWING.z);
+      this.body.velocity[j+2]=-this.speed*(this.target.y-SWING.height);
     }
     this.body.previous.set(this.body.x);this.body.wake();this.body.updateCenter();this.body.surfaceDirty=true;
     return true;
@@ -64,11 +83,9 @@ export class SwingPhysics {
     this.riding=false;
   }
   reset() {this.riding=false;this.angle=0;this.speed=0;this.elapsed=0;}
-  private riderTarget(i:number,out:Vector3) {
-    const r=this.body.rest,j=i*3;
-    const y=r[j+1]+.004-SWING.length,z=r[j+2];
-    const c=Math.cos(this.angle),s=Math.sin(this.angle);
-    out.set(SWING.x+r[j],SWING.height+c*y+s*z,SWING.z-s*y+c*z);
+  private riderTarget(i:number,out:Vector3,c:number,s:number) {
+    const y=this.localY[i],z=this.localZ[i];
+    out.set(this.targetX[i],SWING.height+c*y+s*z,SWING.z-s*y+c*z);
   }
   step(h:number) {
     this.elapsed+=h;
@@ -87,13 +104,13 @@ export class SwingPhysics {
     if(.5*this.speed*this.speed>kinetic)this.speed=Math.sign(this.speed)*Math.sqrt(Math.max(0,2*kinetic));
     if(!this.riding)return;
     const b=this.body;b.canSleep=false;b.wake();
+    const c=Math.cos(this.angle),s=Math.sin(this.angle);
     for(let i=0;i<b.mass.length;i++) {
-      const j=i*3;this.riderTarget(i,this.target);
+      const j=i*3;this.riderTarget(i,this.target,c,s);
       const y=this.target.y-SWING.height,z=this.target.z-SWING.z;
       // Strong support at feet, progressively freer torso and crown. Inertia and
       // the volume-preserving solver produce the wobble, rather than mesh scaling.
-      const support=Math.max(0,1-b.rest[j+1]/.027);
-      const stiffness=650+support*6500,damping=22+support*65;
+      const stiffness=this.stiffness[i],damping=this.damping[i];
       b.velocity[j]+=(stiffness*(this.target.x-b.x[j])-damping*b.velocity[j])*h;
       b.velocity[j+1]+=(stiffness*(this.target.y-b.x[j+1])-damping*(b.velocity[j+1]-this.speed*z))*h;
       b.velocity[j+2]+=(stiffness*(this.target.z-b.x[j+2])-damping*(b.velocity[j+2]+this.speed*y))*h;

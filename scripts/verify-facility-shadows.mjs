@@ -72,6 +72,12 @@ for(let i=0;i<ix.length;i+=3)for(let e=0;e<3;e++) {
   edges.set(key,(edges.get(key)??0)+1);
 }
 assert([...edges.values()].every(count=>count===2),'cushion is a closed manifold, including the underside and seam');
+const mergedStatic=trampoline.group.children.filter(part=>part.isMesh&&(
+  part.name==='trampoline-static'||part.name==='trampoline-leg'||part.name==='trampoline-foot'||part.name==='trampoline-cushion'));
+assert.equal(mergedStatic.length,6,'static trampoline geometry is merged once per material');
+let triangleCount=0;
+for(const mesh of trampoline.group.children.filter(part=>part.isMesh))triangleCount+=(mesh.geometry.index?.count??mesh.geometry.attributes.position.count)/3;
+assert.equal(triangleCount,47536,'material merging preserves every trampoline triangle');
 for(const foot of trampoline.group.children.filter(part=>part.name==='trampoline-foot')) {
   foot.geometry.computeBoundingBox();
   const low=foot.geometry.boundingBox.min.y+foot.position.y;
@@ -83,10 +89,10 @@ renderer.render=(scene,camera)=>{
   renders++;verifyTableLookup(scene,camera,visible);
   for(const name of ['trampoline-leg','trampoline-foot']) {
     const parts=trampoline.group.children.filter(part=>part.name===name);
-    assert.equal(parts.length,name==='trampoline-leg'?3:6);
+    assert.equal(parts.length,1,'same-material supports are represented by one merged source');
     for(const part of parts) {
-      assert.equal(scene.children.filter(mesh=>mesh.geometry===part.geometry&&mesh.name!=='facility-contact').length,name==='trampoline-foot'?6:1,'complete legs and rubber feet cast directional shadows');
-      assert(scene.children.some(mesh=>mesh.geometry===part.geometry&&mesh.name==='facility-contact'),'supports also contribute ground contact');
+      assert.equal(scene.children.filter(mesh=>mesh.geometry===part.geometry&&mesh.name!=='facility-contact').length,1,'merged supports cast one complete directional shadow');
+      assert(scene.children.some(mesh=>mesh.geometry===part.geometry&&mesh.name==='facility-contact'),'merged supports also contribute ground contact');
     }
   }
 };

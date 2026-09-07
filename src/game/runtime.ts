@@ -83,8 +83,8 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   // Let contact establish itself before displaying the first frame.
   for(let i=0;i<80;i++){rig.step(PHYS.step);body.step(PHYS.step);}
   body.updateSurface();baby.update();input.update(1);
-  facilityShadows.update(renderer);
-  facilityShadows.surfaces.update(renderer);
+  const shadowSyncRevision=facilityShadows.update(renderer);
+  facilityShadows.surfaces.update(renderer,shadowSyncRevision);
   optics.update(renderer,body,true);
   await transport.update();
   stage('Compiling the material');
@@ -111,8 +111,8 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
         body.updateSurface();
       }
       facilities.update();baby.update(dt,facilities.active?.laughing??false,facilities.active?.sleeping??false);
-      facilityShadows.update(renderer);
-      facilityShadows.surfaces.update(renderer);
+      const shadowSyncRevision=facilityShadows.update(renderer);
+      facilityShadows.surfaces.update(renderer,shadowSyncRevision);
       input.update(dt);
       sound.listen(camera);
       transport.follow();

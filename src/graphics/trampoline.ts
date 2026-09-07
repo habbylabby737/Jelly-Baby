@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TRAMPOLINE } from '../game/trampoline-physics.ts';
 
 /** Small upholstered rebounder with a stitched bed, coil springs and tubular legs. */
@@ -98,7 +99,34 @@ export class Trampoline {
         foot.name='trampoline-foot';foot.rotation.y=-a;foot.position.copy(point(u,0));this.group.add(foot);
       }
     }
+    this.mergeStaticMeshes();
     this.update(0);
+  }
+  private mergeStaticMeshes() {
+    const byMaterial=new Map<THREE.Material,THREE.BufferGeometry[]>();
+    const semanticNames=new Map<THREE.Material,string>();
+    const staticMeshes:THREE.Mesh[]=[];
+    for(const child of [...this.group.children]){
+      if(!(child instanceof THREE.Mesh)||child===this.bed)continue;
+      child.updateMatrix();
+      const geometry=child.geometry.clone().applyMatrix4(child.matrix);
+      const material=Array.isArray(child.material)?child.material[0]:child.material;
+      let geometries=byMaterial.get(material);
+      if(!geometries){geometries=[];byMaterial.set(material,geometries);}
+      if(child.name)semanticNames.set(material,child.name);
+      geometries.push(geometry);staticMeshes.push(child);
+    }
+    for(const mesh of staticMeshes){
+      this.group.remove(mesh);mesh.geometry.dispose();
+    }
+    for(const [material,geometries] of byMaterial){
+      const geometry=mergeGeometries(geometries);
+      if(!geometry)throw new Error('Trampoline static geometry attributes cannot be merged');
+      geometry.computeBoundingBox();geometry.computeBoundingSphere();
+      const mesh=new THREE.Mesh(geometry,material);
+      mesh.name=semanticNames.get(material)??'trampoline-static';this.group.add(mesh);
+      for(const source of geometries)source.dispose();
+    }
   }
   update(compression:number) {
     if(compression===this.lastCompression)return;this.lastCompression=compression;

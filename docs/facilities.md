@@ -223,6 +223,29 @@ events carry strength and a world position; `JellySound` handles distance,
 stereo placement, mute state, and voice limits. The complete audio path is
 documented in [Input, audio, and UI](input-audio-ui.md).
 
+## Performance invariants
+
+Facility collision keeps the same 2,526 spatial samples, margins, contact
+iterations, and exact response, but rejects oriented boxes axis by axis and
+stops the second pass when the first pass found no overlap. The trampoline
+barrier uses a squared radial test before taking a square root.
+
+The occupied blanket still performs exact visible-skin clearance and the full
+128-pass fairing. Its render pass is keyed by blanket version, body surface
+revision, and occupancy, so unchanged render inputs do no work. Fixed mattress
+heights and membrane neighbor indices are precomputed, and fairing alternates
+two height-only buffers. These changes do not alter the cloth grid, clearance,
+margin, stencil, or settling thresholds.
+
+Facility ground and raised-surface shadows synchronize registered roots once
+per frame. Geometry revisions dirty the relevant target without rebuilding
+unchanged caster matrices; transform, visibility, and lighting changes still
+invalidate the required maps. The trampoline keeps its deforming bed as one
+mesh and merges its static meshes by material in group-local space, preserving
+all triangles, normals, UVs, and materials while reducing shadow and main-pass
+drawables. Rest-frame bed and swing rider coefficients are cached at facility
+construction and reuse the same forces and targets each step.
+
 ## Adding a facility
 
 To add another set piece:

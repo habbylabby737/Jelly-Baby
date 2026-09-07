@@ -19,8 +19,9 @@ export class FacilityShadows {
   private readonly projection=new THREE.Matrix4();
   private readonly contactProjection=new THREE.Matrix4().set(1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1);
   private readonly bounds=new THREE.Box2();
-  private readonly casters:{source:THREE.Mesh;shadow:THREE.Mesh;contact:THREE.Mesh;matrix:THREE.Matrix4;positionVersion:number}[]=[];
-  private dirty=true;
+  private readonly casters:{source:THREE.Mesh;shadow:THREE.Mesh;contact:THREE.Mesh;matrix:THREE.Matrix4;positionVersion:number;projectionVersion:number}[]=[];
+  private projectionVersion=0;
+  private targetDirty=true;
   private readonly envelopes:THREE.Box3[]=[];
   constructor(incoming:THREE.Vector3,windowFraction:number) {
     if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
@@ -42,7 +43,6 @@ export class FacilityShadows {
   /** Bounds must include the facility's entire motion envelope, in world metres. */
   add(group:THREE.Group,envelope:THREE.Box3) {
     this.surfaces.add(group,envelope);
-    group.updateWorldMatrix(true,true);
     this.envelopes.push(envelope.clone());this.fitBounds();
     group.traverse(object=>{
       if(!(object instanceof THREE.Mesh))return;
@@ -50,16 +50,16 @@ export class FacilityShadows {
       shadow.matrixAutoUpdate=false;shadow.frustumCulled=false;this.scene.add(shadow);
       const contact=new THREE.Mesh(object.geometry,this.contactMaterial);
       contact.name='facility-contact';contact.matrixAutoUpdate=false;contact.frustumCulled=false;this.scene.add(contact);
-      this.casters.push({source:object,shadow,contact,matrix:new THREE.Matrix4(),positionVersion:-1});
+      this.casters.push({source:object,shadow,contact,matrix:new THREE.Matrix4(),positionVersion:-1,projectionVersion:-1});
     });
-    this.dirty=true;
+    this.targetDirty=true;
   }
   setLighting(incoming:THREE.Vector3,windowFraction:number) {
     if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
     const x=incoming.x/incoming.y,z=incoming.z/incoming.y,floor=-.00005;
     this.projection.set(1,-x,0,x*floor,0,-z,1,z*floor,0,0,0,0,0,0,0,1);
     this.surfaces.setLighting(incoming,windowFraction);
-    this.fitBounds();this.dirty=true;
+    this.fitBounds();this.targetDirty=true;
   }
   private fitBounds() {
     this.bounds.makeEmpty();
@@ -71,6 +71,7 @@ export class FacilityShadows {
       }
     }
     const padded=this.bounds.clone().expandByScalar(.012),span=padded.getSize(new THREE.Vector2());
+    this.projectionVersion++;
     this.originNode.value.copy(padded.min);this.spanNode.value.copy(span);
     this.surfaces.setGroundFootprint(span);
     // WebGPU raster rows run downward: UV.v = 1 - normalized world Z.
@@ -86,25 +87,29 @@ export class FacilityShadows {
     this.camera.bottom=padded.min.y;this.camera.top=padded.max.y;this.camera.updateProjectionMatrix();
   }
   update(renderer:THREE.WebGPURenderer) {
+    const worldSyncRevision=this.surfaces.syncWorldMatrices();
     for(const caster of this.casters) {
-      caster.source.updateWorldMatrix(true,false);
       const position=caster.source.geometry.attributes.position;
       const positionVersion=position instanceof THREE.InterleavedBufferAttribute?position.data.version:position.version;
-      if(positionVersion!==caster.positionVersion){caster.positionVersion=positionVersion;this.dirty=true;}
-      if(this.dirty||!caster.matrix.equals(caster.source.matrixWorld)||caster.shadow.visible!==caster.source.visible) {
+      if(positionVersion!==caster.positionVersion){caster.positionVersion=positionVersion;this.targetDirty=true;}
+      const transformChanged=!caster.matrix.equals(caster.source.matrixWorld);
+      const visibilityChanged=caster.shadow.visible!==caster.source.visible;
+      if(transformChanged||visibilityChanged||caster.projectionVersion!==this.projectionVersion) {
         caster.matrix.copy(caster.source.matrixWorld);
         caster.shadow.matrix.multiplyMatrices(this.projection,caster.matrix);
-        caster.shadow.matrixWorldNeedsUpdate=true;caster.shadow.visible=caster.source.visible;this.dirty=true;
+        caster.shadow.matrixWorldNeedsUpdate=true;caster.shadow.visible=caster.source.visible;
         caster.contact.matrix.multiplyMatrices(this.contactProjection,caster.matrix);
         caster.contact.matrixWorldNeedsUpdate=true;caster.contact.visible=caster.source.visible;
+        caster.projectionVersion=this.projectionVersion;this.targetDirty=true;
       }
     }
-    if(!this.dirty)return;
+    if(!this.targetDirty)return worldSyncRevision;
     const previous=renderer.getRenderTarget(),autoClear=renderer.autoClear;
     try {
       renderer.autoClear=true;renderer.setRenderTarget(this.target);renderer.render(this.scene,this.camera);
-      this.dirty=false;
+      this.targetDirty=false;
     } finally {renderer.setRenderTarget(previous);renderer.autoClear=autoClear;}
+    return worldSyncRevision;
   }
   dispose() {this.surfaces.dispose();this.scene.clear();this.casters.length=0;this.material.dispose();this.contactMaterial.dispose();this.target.dispose();}
 }

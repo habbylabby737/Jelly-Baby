@@ -20,6 +20,8 @@ export class SurfaceShadows {
   private readonly babyTarget=new THREE.RenderTarget(SURFACE_SHADOW_SIZE,SURFACE_SHADOW_SIZE,{type:THREE.FloatType,format:THREE.RedFormat});
   private readonly bounds=new THREE.Box3();
   private readonly casters:{source:THREE.Mesh;proxy:THREE.Mesh;version:number}[]=[];
+  private readonly roots=new Set<THREE.Object3D>();
+  private worldSyncRevision=0;
   private readonly receivers=new Set<THREE.NodeMaterial>();
   private readonly receiverDepths:ReceiverDepth[]=[];
   private facilityDirty=true;
@@ -44,6 +46,7 @@ export class SurfaceShadows {
   add(group:THREE.Group,envelope:THREE.Box3) {
     this.bounds.union(envelope);
     this.fitCamera();
+    this.roots.add(group);
     group.traverse(object=>{if(object instanceof THREE.Mesh)this.register(object,this.facilities,true);});
     this.facilityDirty=this.babyDirty=true;
   }
@@ -69,7 +72,13 @@ export class SurfaceShadows {
     for(const receiver of this.receiverDepths)receiver.dirty=true;
   }
 
-  addBaby(mesh:THREE.Mesh) {this.register(mesh,this.baby,false);this.babyDirty=true;}
+  addBaby(mesh:THREE.Mesh) {this.roots.add(mesh);this.register(mesh,this.baby,false);this.babyDirty=true;}
+
+  /** Update every registered root once; facility ground shadows can share this pass. */
+  syncWorldMatrices() {
+    for(const root of this.roots)root.updateWorldMatrix(true,true);
+    return ++this.worldSyncRevision;
+  }
 
   /** Reuse the table's 1.5-texel tent spacing, expressed in world metres. */
   setGroundFootprint(span:THREE.Vector2) {
@@ -158,18 +167,24 @@ export class SurfaceShadows {
     }
   }
 
-  update(renderer:THREE.WebGPURenderer) {
+  update(renderer:THREE.WebGPURenderer,syncedRevision=-1) {
+    if(syncedRevision!==this.worldSyncRevision)this.syncWorldMatrices();
     for(const caster of this.casters) {
-      caster.source.updateWorldMatrix(true,false);
       let visible=true;
       for(let object:THREE.Object3D|null=caster.source;object;object=object.parent)visible&&=object.visible;
       const position=caster.source.geometry.attributes.position;
       const version=position instanceof THREE.InterleavedBufferAttribute?position.data.version:position.version;
-      if(version===caster.version&&caster.proxy.matrix.equals(caster.source.matrixWorld)&&caster.proxy.visible===visible)continue;
-      caster.version=version;caster.proxy.matrix.copy(caster.source.matrixWorld);
-      caster.proxy.matrixWorldNeedsUpdate=true;caster.proxy.visible=visible;
+      const geometryChanged=version!==caster.version;
+      const transformChanged=!caster.proxy.matrix.equals(caster.source.matrixWorld);
+      const visibilityChanged=caster.proxy.visible!==visible;
+      if(!geometryChanged&&!transformChanged&&!visibilityChanged)continue;
+      caster.version=version;
+      if(transformChanged){caster.proxy.matrix.copy(caster.source.matrixWorld);caster.proxy.matrixWorldNeedsUpdate=true;}
+      if(visibilityChanged)caster.proxy.visible=visible;
       for(const receiver of this.receiverDepths)if(receiver.source===caster.source){
-        receiver.proxy.matrix.copy(caster.source.matrixWorld);receiver.proxy.matrixWorldNeedsUpdate=true;receiver.proxy.visible=visible;receiver.dirty=true;
+        if(transformChanged){receiver.proxy.matrix.copy(caster.source.matrixWorld);receiver.proxy.matrixWorldNeedsUpdate=true;}
+        if(visibilityChanged)receiver.proxy.visible=visible;
+        receiver.dirty=true;
       }
       if(caster.proxy.parent===this.facilities)this.facilityDirty=true;else this.babyDirty=true;
     }
@@ -185,7 +200,7 @@ export class SurfaceShadows {
 
   dispose() {
     for(const receiver of this.receiverDepths){receiver.scene.clear();receiver.target.dispose();}this.receiverDepths.length=0;
-    this.facilities.clear();this.baby.clear();this.casters.length=0;this.receivers.clear();
+    this.facilities.clear();this.baby.clear();this.casters.length=0;this.roots.clear();this.receivers.clear();
     this.material.dispose();this.facilityTarget.dispose();this.babyTarget.dispose();
   }
 }
