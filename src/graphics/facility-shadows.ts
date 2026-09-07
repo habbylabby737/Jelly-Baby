@@ -21,6 +21,7 @@ export class FacilityShadows {
   private readonly bounds=new THREE.Box2();
   private readonly casters:{source:THREE.Mesh;shadow:THREE.Mesh;contact:THREE.Mesh;matrix:THREE.Matrix4;positionVersion:number}[]=[];
   private dirty=true;
+  private readonly envelopes:THREE.Box3[]=[];
   constructor(incoming:THREE.Vector3,windowFraction:number) {
     if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
     this.surfaces=new SurfaceShadows(incoming,windowFraction);
@@ -42,10 +43,32 @@ export class FacilityShadows {
   add(group:THREE.Group,envelope:THREE.Box3) {
     this.surfaces.add(group,envelope);
     group.updateWorldMatrix(true,true);
+    this.envelopes.push(envelope.clone());this.fitBounds();
+    group.traverse(object=>{
+      if(!(object instanceof THREE.Mesh))return;
+      const shadow=new THREE.Mesh(object.geometry,this.material);
+      shadow.matrixAutoUpdate=false;shadow.frustumCulled=false;this.scene.add(shadow);
+      const contact=new THREE.Mesh(object.geometry,this.contactMaterial);
+      contact.name='facility-contact';contact.matrixAutoUpdate=false;contact.frustumCulled=false;this.scene.add(contact);
+      this.casters.push({source:object,shadow,contact,matrix:new THREE.Matrix4(),positionVersion:-1});
+    });
+    this.dirty=true;
+  }
+  setLighting(incoming:THREE.Vector3,windowFraction:number) {
+    if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
+    const x=incoming.x/incoming.y,z=incoming.z/incoming.y,floor=-.00005;
+    this.projection.set(1,-x,0,x*floor,0,-z,1,z*floor,0,0,0,0,0,0,0,1);
+    this.surfaces.setLighting(incoming,windowFraction);
+    this.fitBounds();this.dirty=true;
+  }
+  private fitBounds() {
+    this.bounds.makeEmpty();
     const p=new THREE.Vector3();
-    for(const x of [envelope.min.x,envelope.max.x])for(const y of [envelope.min.y,envelope.max.y])for(const z of [envelope.min.z,envelope.max.z]) {
-      p.set(x,y,z).applyMatrix4(this.projection);this.bounds.expandByPoint(new THREE.Vector2(p.x,p.y));
-      this.bounds.expandByPoint(new THREE.Vector2(x,z));
+    for(const envelope of this.envelopes) {
+      for(const x of [envelope.min.x,envelope.max.x])for(const y of [envelope.min.y,envelope.max.y])for(const z of [envelope.min.z,envelope.max.z]) {
+        p.set(x,y,z).applyMatrix4(this.projection);this.bounds.expandByPoint(new THREE.Vector2(p.x,p.y));
+        this.bounds.expandByPoint(new THREE.Vector2(x,z));
+      }
     }
     const padded=this.bounds.clone().expandByScalar(.012),span=padded.getSize(new THREE.Vector2());
     this.originNode.value.copy(padded.min);this.spanNode.value.copy(span);
@@ -61,15 +84,6 @@ export class FacilityShadows {
     );
     this.camera.left=padded.min.x;this.camera.right=padded.max.x;
     this.camera.bottom=padded.min.y;this.camera.top=padded.max.y;this.camera.updateProjectionMatrix();
-    group.traverse(object=>{
-      if(!(object instanceof THREE.Mesh))return;
-      const shadow=new THREE.Mesh(object.geometry,this.material);
-      shadow.matrixAutoUpdate=false;shadow.frustumCulled=false;this.scene.add(shadow);
-      const contact=new THREE.Mesh(object.geometry,this.contactMaterial);
-      contact.name='facility-contact';contact.matrixAutoUpdate=false;contact.frustumCulled=false;this.scene.add(contact);
-      this.casters.push({source:object,shadow,contact,matrix:new THREE.Matrix4(),positionVersion:-1});
-    });
-    this.dirty=true;
   }
   update(renderer:THREE.WebGPURenderer) {
     for(const caster of this.casters) {

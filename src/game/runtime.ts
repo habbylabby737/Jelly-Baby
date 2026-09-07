@@ -18,6 +18,7 @@ import { FlavorPicker } from './flavor-picker.ts';
 import { Facilities } from './facilities.ts';
 import { SwingFacility } from './swing-facility.ts';
 import { FacilityShadows } from '../graphics/facility-shadows.ts';
+import { LightingMode } from './lighting-mode.ts';
 import { TrampolineFacility } from './trampoline-facility.ts';
 
 export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
@@ -57,6 +58,10 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   input.facilityCameraDistance=()=>facilities.active?.cameraDistance;
   facilities.onInteract=()=>{input.clear();rig.reset();void sound.unlock().catch(()=>{});};
   const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail);
+  const lightingMode=new LightingMode(renderer,scene,environment,light=>{
+    optics.setLightDirection(light.incoming);transport.setLightDirection(light.incoming);
+    facilityShadows.setLighting(light.incoming,light.windowFraction);table.setLighting(light);
+  },fail);
   const resize=()=>resizeView(renderer,camera,input.controls);
   let resizeFrame=0;
   const resizeObserver=new ResizeObserver(()=>{
@@ -118,10 +123,10 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   await renderer.setAnimationLoop(frame);
   const dispose=()=>{
     if(disposed)return;disposed=true;
-    void renderer.setAnimationLoop(null);input.dispose();sound.dispose();transport.dispose();resizeObserver.disconnect();cancelAnimationFrame(resizeFrame);
+    lightingMode.dispose();void renderer.setAnimationLoop(null);input.dispose();sound.dispose();transport.dispose();resizeObserver.disconnect();cancelAnimationFrame(resizeFrame);
     facilities.dispose();facilityShadows.dispose();flavorPicker.dispose();composite.dispose();baby.dispose();table.dispose();environment.dispose();optics.dispose();renderer.dispose();
   };
   window.addEventListener('pagehide',event=>{if(!event.persisted)dispose();});
   if(import.meta.hot)import.meta.hot.dispose(dispose);
-  return {stop:()=>{disposed=true;input.clear();facilities.dispose();facilityShadows.dispose();flavorPicker.dispose();sound.dispose();transport.dispose();void renderer.setAnimationLoop(null);}};
+  return {stop:()=>{disposed=true;lightingMode.dispose();input.clear();facilities.dispose();facilityShadows.dispose();flavorPicker.dispose();sound.dispose();transport.dispose();void renderer.setAnimationLoop(null);}};
 }

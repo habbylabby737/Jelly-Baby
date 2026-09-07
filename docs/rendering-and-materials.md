@@ -46,7 +46,7 @@ not enter the tabletop composition.
 
 ## Scene and lighting
 
-The scene uses a warm beige background and matching fog. The HDR room image is
+Day mode is the default. The scene uses a warm beige background and matching fog. The HDR room image is
 loaded from [`src/assets/bg_room.exr`](../src/assets/bg_room.exr) as half-float
 linear data. It is not drawn as the scene background; it is converted into a
 PMREM environment texture for image-based lighting.
@@ -70,6 +70,31 @@ this to indirect diffuse, specular, and clearcoat lighting; the final output and
 transmitted background are not multiplied by a shadow mask. This preserves the
 jelly's refraction and avoids a dark painted-on layer. No second light is added.
 The jelly receives only the facility map, keeping its existing self-shading intact.
+
+## Night mode
+
+The sun/moon control uses `LightingMode` to load `night.exr` on first use and
+cache its PMREM for later toggles. Day keeps its original studio shaping,
+environment intensity, exposure, and post process. Night uses the supplied HDR
+without studio rotation or window gain, at environment intensity `.45`, with
+a dark blue background/fog and a readable evening UI palette. Exposure and the
+post process stay fixed.
+
+The night image's strongest patch is below the horizon. Its shadow-source
+threshold therefore uses the upper hemisphere's peak, so that lower patch
+cannot hide the weaker overhead emitter. The resulting warm, low source drives
+direction, color, shadow fraction, and transmitted irradiance; PMREM still
+includes the entire image. This remains a dominant-source approximation: ambient
+fill and other emitters contribute illumination without separate shadow maps.
+
+Switching updates table uniforms, GPU caustic direction and flux correction,
+facility ground projection, and raised-surface depth cameras together. Swept
+bounds are refitted for the longer night shadows and all shadow caches are
+invalidated. The worker receives a lighting revision; old directional results
+are discarded and its shadow texture is cleared until the fresh field arrives.
+Returning to day reapplies the cached original environment and measurements.
+The first night load disables the button while pending; failures reach the
+existing fatal UI, and disposal prevents late loads from changing the scene.
 
 ## Table material
 

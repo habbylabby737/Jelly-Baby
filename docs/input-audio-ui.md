@@ -11,7 +11,7 @@ release.
 
 - the full-screen WebGPU viewport;
 - the masthead and “a small, soft world” label;
-- sound, reset, and flavor buttons;
+- sound, reset, flavor, and day/night buttons;
 - desktop keyboard/mouse hints;
 - the specimen caption;
 - a touch joystick and hop button; and
@@ -25,6 +25,11 @@ viewports, and disables decorative motion when `prefers-reduced-motion` is set.
 
 `index.html` supplies the page metadata, favicon, social preview image, and a
 `noscript` message explaining that JavaScript and WebGPU are required.
+
+The day/night button displays the current mode as a sun or moon and labels the
+action to switch to the other mode. It starts in day mode on each load, exposes
+pressed/busy state, and temporarily disables duplicate activation while the
+night HDR loads. Its controller is disposed with the runtime.
 
 ## Orbit and camera follow
 

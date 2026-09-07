@@ -65,3 +65,16 @@ h2{font:italic 39px Georgia,serif;letter-spacing:-1.6px;font-weight:400;margin:0
 @media(max-width:220px){.flavor-menu{grid-template-columns:minmax(0,1fr);width:min(170px,calc(100vw - 24px))}.flavor-option{min-width:0}.flavor-option>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}}
 @media(max-height:480px) and (pointer:coarse){.masthead{top:16px}h1{font-size:29px;margin-top:7px}.eyebrow{display:none}.touch-controls{bottom:15px}.joystick{width:92px;height:92px}.joystick-track{inset:11px}.joystick-knob{width:40px;height:40px}.jump{width:65px;height:65px}}
 @media(prefers-reduced-motion:reduce){.jelly-mark{animation:none}#loading,.icon-button{transition:none}}
+
+/* Night-only overrides leave the established day palette intact. */
+#lighting-mode .night-icon,.night-mode #lighting-mode .day-icon{display:none}
+.night-mode #lighting-mode .night-icon{display:block}
+#lighting-mode:disabled{cursor:progress;opacity:.65}
+:root.night-mode{color:#e0e4ee;background:#171c2a;color-scheme:dark}
+.night-mode .icon-button,.night-mode .flavor-menu,.night-mode .facility-hint,.night-mode .facility-button,.night-mode .touch-controls button{background:#222b40b8;border-color:#a8b8d24d}
+.night-mode .icon-button:hover,.night-mode .flavor-option:hover,.night-mode .flavor-option[aria-pressed="true"]{background:#53607980}
+.night-mode .desktop-hints,.night-mode .specimen{color:#c3cde2b8}
+.night-mode kbd{border-color:#a8b8d24d;background:#222b404d}
+.night-mode button:focus-visible{outline-color:#c5d7f2}
+.night-mode #loading{color:#394028}
+@media(max-width:420px){.actions{gap:4px;right:16px}.actions .icon-button{width:34px;height:34px}.masthead{left:16px}h1{font-size:31px}}

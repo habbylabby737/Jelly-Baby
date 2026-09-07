@@ -11,6 +11,7 @@ export class OpticalTransport {
   private tracedOrigin=[0,0];
   private disposed=false;
   private lastRevision=-1;
+  private lightingRevision=0;
   private nextRequestAt=0;
   private lastCamera=new Vector3(Infinity,Infinity,Infinity);
   readonly optics:RefractiveLightField;
@@ -26,6 +27,7 @@ export class OpticalTransport {
       if(this.disposed)return;
       if(data.error){const error=new Error(`Light transport: ${data.error}`);this.pending?.reject(error);this.pending=null;fail(error);return;}
       if(data.shadow) {
+        if(data.lightingRevision!==this.lightingRevision)return;
         optics.shadowBytes.set(data.shadow);optics.shadowTexture.needsUpdate=true;
         optics.shadowSpan=data.span;optics.shadowSpanNode.value=data.span;
         this.tracedCenter=data.center;this.tracedOrigin=data.origin;this.follow();
@@ -40,6 +42,12 @@ export class OpticalTransport {
       const error=new Error(`Light transport worker: ${event.message}`);
       this.pending?.reject(error);this.pending=null;fail(error);
     };
+  }
+  setLightDirection(direction:Vector3) {
+    this.lightingRevision++;this.lastRevision=-1;this.nextRequestAt=0;
+    this.tracedCenter=null;
+    this.optics.shadowBytes.fill(0);this.optics.shadowTexture.needsUpdate=true;
+    this.worker.postMessage({type:'lighting',direction:direction.toArray(),lightingRevision:this.lightingRevision});
   }
   update():Promise<void> {
     if(this.pending||this.disposed)return Promise.resolve();

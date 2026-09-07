@@ -2,22 +2,24 @@ import * as THREE from 'three/webgpu';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 import { shapeStudioLight } from './studio-light.ts';
 
-export async function loadEnvironment(renderer:THREE.WebGPURenderer,scene:THREE.Scene) {
-  const source=await new EXRLoader().setDataType(THREE.HalfFloatType).loadAsync(new URL('../assets/bg_room.exr',import.meta.url).href);
+export async function loadEnvironment(renderer:THREE.WebGPURenderer,scene:THREE.Scene,night=false) {
+  const source=await new EXRLoader().setDataType(THREE.HalfFloatType).loadAsync((night?new URL('../assets/night.exr',import.meta.url):new URL('../assets/bg_room.exr',import.meta.url)).href);
   source.mapping=THREE.EquirectangularReflectionMapping;
   source.colorSpace=THREE.LinearSRGBColorSpace;
   const original=source.image as {data:Uint16Array;width:number;height:number};
-  const sourceWindow=measureWindow(original).incoming.negate();
-  const studio=shapeStudioLight(original,sourceWindow);
+  const studio=night?original:shapeStudioLight(original,measureWindow(original).incoming.negate());
   source.image.data=studio.data;source.needsUpdate=true;
-  const lighting=measureWindow(studio);
+  const lighting=measureWindow(studio,night);
+  const intensity=night ? .45 : .9;
+  lighting.irradiance*=intensity/.9;
   const pmrem=new THREE.PMREMGenerator(renderer);
   const target=pmrem.fromEquirectangular(source);
-  scene.environment=target.texture;scene.environmentIntensity=.9;
-  return {...lighting,dispose:()=>{target.dispose();source.dispose();pmrem.dispose();}};
+  const apply=()=>{scene.environment=target.texture;scene.environmentIntensity=intensity;};
+  if(!night)apply();
+  return {...lighting,apply,dispose:()=>{target.dispose();source.dispose();pmrem.dispose();}};
 }
 
-export function measureWindow(image:{data:Uint16Array;width:number;height:number}) {
+export function measureWindow(image:{data:Uint16Array;width:number;height:number},upperPeakOnly=false) {
   // Match Three's equirectUV: u=atan2(z,x)/2π+.5, v=asin(y)/π+.5.
   // EXRLoader writes scanlines in texture order, with flipY=false.
   const {data,width,height}=image;
@@ -27,7 +29,9 @@ export function measureWindow(image:{data:Uint16Array;width:number;height:number
   for(let y=0;y<height;y+=2)for(let x=0;x<width;x+=2) {
     const k=(y*width+x)*channelCount;
     const l=.2126*THREE.DataUtils.fromHalfFloat(data[k])+.7152*THREE.DataUtils.fromHalfFloat(data[k+1])+.0722*THREE.DataUtils.fromHalfFloat(data[k+2]);
-    peak=Math.max(peak,l);
+    // Night's brightest patch is below the horizon; it must not suppress
+    // detection of the weaker overhead emitter that casts tabletop shadows.
+    if(!upperPeakOnly||y>=height/2)peak=Math.max(peak,l);
     if(y>=height/2)upperLuminance.push(l);
   }
   upperLuminance.sort((a,b)=>a-b);

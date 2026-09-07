@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OpticalShadowField, SurfaceBVH, updateViewThickness } from './refractive-light.js';
 import { deformSurface } from '../physics/deform-surface.js';
 
+let lightingRevision=0;
 let shadowField:OpticalShadowField;
 let bvh:SurfaceBVH;
 let geometry:THREE.BufferGeometry;
@@ -23,11 +24,15 @@ self.onmessage=({data})=>{
       shadowField=new OpticalShadowField(surface,new THREE.Vector3().fromArray(data.direction));
       return;
     }
+    if(data.type==='lighting') {
+      shadowField.lightDirection.fromArray(data.direction);lightingRevision=data.lightingRevision;
+      return;
+    }
     const center=new THREE.Vector3().fromArray(data.center);
     if(data.particles) {
       deformSurface(surface,data.particles,data.nodalF);bvh.refit();shadowField.update({center});
       const shadow=shadowField.shadowBytes.slice();
-      self.postMessage({shadow,origin:shadowField.origin.toArray(),span:shadowField.span,center:data.center},{transfer:[shadow.buffer]});
+      self.postMessage({shadow,lightingRevision,origin:shadowField.origin.toArray(),span:shadowField.span,center:data.center},{transfer:[shadow.buffer]});
     }
     updateViewThickness(surface,bvh,{position:new THREE.Vector3().fromArray(data.camera)});
     const thickness=new Float32Array(geometry.getAttribute('opticalThickness').array);

@@ -9,6 +9,7 @@ source and the verification suite exercises the same modules used by the game.
 | Location | Role | Ownership |
 | --- | --- | --- |
 | `src/assets/bg_room.exr` | Source HDR room/window image for environment lighting and measured transport. | Authored runtime asset. |
+| `src/assets/night.exr` | Unshaped night HDR environment, loaded on first toggle. | Authored runtime asset. |
 | `src/assets/wood_texture/wood_base.jpg` | Table albedo. | Authored runtime asset. |
 | `src/assets/wood_texture/wood_normal.png` | Table normal map. | Authored runtime asset. |
 | `src/assets/wood_texture/wood_roughness.jpg` | Table roughness map. | Authored runtime asset. |
@@ -221,3 +222,5 @@ WebGPU support. WebGL fallback is intentionally disabled. Node regressions
 cover numerical behavior, resource graph construction, worker protocol, and
 data invariants; they do not replace visual inspection of GPU shader output,
 touch feel, audio on the target device, or browser-specific WebGPU stability.
+
+`npm run test:lighting` checks the actual night HDR source measurement, lighting-driven shadow cache invalidation, refitted swept bounds, and exact day projection restoration without a browser.

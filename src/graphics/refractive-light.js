@@ -331,9 +331,9 @@ class RefractiveLightField {
     const causticMaterial=new THREE.MeshBasicNodeMaterial({side:THREE.DoubleSide,transparent:true});
     causticMaterial.positionNode=select(valid,projected,fallback);
     const dx=sourceUV.dFdx(),dy=sourceUV.dFdy();
-    const horizontalFluxCorrection=1/Math.max(.15,Math.abs(this.lightDirection.y));
+    const horizontalFluxCorrection=this.lightDirectionNode.y.abs().max(.15).reciprocal();
     const inverseJacobian=dx.x.mul(dy.y).sub(dx.y.mul(dy.x)).abs()
-      .mul(CAUSTIC_SIZE*CAUSTIC_SIZE*horizontalFluxCorrection)
+      .mul(CAUSTIC_SIZE*CAUSTIC_SIZE).mul(horizontalFluxCorrection)
       .mul(this.lightExtentNode.mul(this.lightExtentNode).div(this.receiverSpanNode.mul(this.receiverSpanNode)));
     // Finite source size is represented by the following blur, so cap only pathological fold singularities.
     const focus=inverseJacobian.min(18);
@@ -368,6 +368,10 @@ class RefractiveLightField {
   setAbsorption(sigma) {
     this.absorptionNode.value.set(-sigma[0],-sigma[1],-sigma[2]);this.absorptionDirty=true;
   }
+  setLightDirection(direction) {
+    this.lightDirection.copy(direction).normalize();this.lastRevision=-1;
+  }
+
   update(renderer,body,force=false) {
     if(!force&&!this.absorptionDirty&&this.lastRevision===body.surfaceRevision&&this.lastCenter.distanceToSquared(body.center)<1e-14)return;
     this.lastRevision=body.surfaceRevision;this.lastCenter.copy(body.center);

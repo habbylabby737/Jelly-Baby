@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { texture, positionWorld, float, vec2, vec3, normalMap } from 'three/tsl';
+import { texture, positionWorld, float, vec2, vec3, normalMap, uniform } from 'three/tsl';
 import type { RefractiveLightField } from './refractive-light.js';
 import type { FacilityShadows } from './facility-shadows.ts';
 
 export async function makeTable(optics:RefractiveLightField,light:{color:THREE.Color;windowFraction:number;irradiance:number},facilities:FacilityShadows) {
+  const fraction=uniform(light.windowFraction),irradiance=uniform(light.irradiance/Math.PI),color=uniform(light.color.clone());
   const loader=new THREE.TextureLoader();
   const urls=[new URL('../assets/wood_texture/wood_base.jpg',import.meta.url).href,
     new URL('../assets/wood_texture/wood_normal.png',import.meta.url).href,
@@ -33,12 +34,12 @@ export async function makeTable(optics:RefractiveLightField,light:{color:THREE.C
   }
   const facilityShadow=facilityMask.x.mul(facilityInside),facilityContact=facilityMask.y.mul(facilityInside);
   const visibility=float(1).sub(shadow).mul(float(1).sub(facilityShadow));
-  material.colorNode=albedo.mul(float(1).sub(float(1).sub(visibility).mul(light.windowFraction))).mul(float(1).sub(contact.mul(.40))).mul(float(1).sub(facilityContact.mul(.35)));
+  material.colorNode=albedo.mul(float(1).sub(float(1).sub(visibility).mul(fraction))).mul(float(1).sub(contact.mul(.40))).mul(float(1).sub(facilityContact.mul(.35)));
   // Plane UV-v points toward -Z; the metre-scaled world UV points toward +Z.
   material.normalNode=normalMap(texture(normal,uv),vec2(.27,-.27));
   material.roughnessNode=texture(roughness,uv).r.mul(.30).add(.12);
-  material.emissiveNode=albedo.mul(texture(optics.lightTexture,opticalUV).rgb).mul(light.irradiance/Math.PI).mul(vec3(light.color.r,light.color.g,light.color.b)).mul(inside).mul(float(1).sub(facilityShadow));
+  material.emissiveNode=albedo.mul(texture(optics.lightTexture,opticalUV).rgb).mul(irradiance).mul(color).mul(inside).mul(float(1).sub(facilityShadow));
   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(200,200),material);
   mesh.rotation.x=-Math.PI/2;mesh.position.y=-.00005;
-  return {mesh,dispose:()=>{mesh.geometry.dispose();material.dispose();[base,normal,roughness].forEach(t=>t.dispose());}};
+  return {mesh,setLighting:(light:{color:THREE.Color;windowFraction:number;irradiance:number})=>{fraction.value=light.windowFraction;irradiance.value=light.irradiance/Math.PI;color.value.copy(light.color);},dispose:()=>{mesh.geometry.dispose();material.dispose();[base,normal,roughness].forEach(t=>t.dispose());}};
 }

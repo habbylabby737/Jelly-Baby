@@ -73,7 +73,8 @@ applied independently along that path. This is a perceptual real-time optical
 model rather than three separately traced spectral simulations.
 
 The field is updated only when forced, when the body surface revision changes,
-when the center moves, or when flavor absorption changes. Camera-only movement
+when the center moves, or when flavor absorption or the lighting mode changes. Light direction and the
+horizontal-flux correction are dynamic shader inputs. Camera-only movement
 does not rerender the caustic field.
 
 ## Worker-backed shadow and thickness transport
@@ -101,6 +102,11 @@ directional field.
 and the current center. It shifts the contact origin horizontally and reprojects
 the directional shadow origin for the current vertical offset, so a delayed
 worker result stays attached to the moving body.
+
+Lighting-mode changes send the new direction separately and force the next
+shape request even for a sleeping body. Shadow replies carry a lighting revision
+so an in-flight day result cannot overwrite a night field (or vice versa).
+View thickness is independent of this revision and can still complete normally.
 
 ## View thickness
 

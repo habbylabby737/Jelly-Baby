@@ -22,10 +22,10 @@ export class SurfaceShadows {
   private readonly receivers=new Set<THREE.NodeMaterial>();
   private facilityDirty=true;
   private babyDirty=true;
-  private readonly windowFraction:number;
+  private readonly windowFraction=uniform(0);
 
   constructor(incoming:THREE.Vector3,windowFraction:number) {
-    this.windowFraction=windowFraction;
+    this.windowFraction.value=windowFraction;
     this.directionNode=uniform(incoming.clone().negate());
     this.camera.coordinateSystem=THREE.WebGPUCoordinateSystem;
     this.camera.position.copy(incoming).multiplyScalar(-2);
@@ -41,6 +41,20 @@ export class SurfaceShadows {
 
   add(group:THREE.Group,envelope:THREE.Box3) {
     this.bounds.union(envelope);
+    this.fitCamera();
+    group.traverse(object=>{if(object instanceof THREE.Mesh)this.register(object,this.facilities,true);});
+    this.facilityDirty=this.babyDirty=true;
+  }
+
+  setLighting(incoming:THREE.Vector3,windowFraction:number) {
+    this.windowFraction.value=windowFraction;
+    this.directionNode.value.copy(incoming).negate();
+    this.camera.position.copy(incoming).multiplyScalar(-2);
+    this.camera.lookAt(0,0,0);this.camera.updateMatrixWorld(true);
+    this.fitCamera();this.facilityDirty=this.babyDirty=true;
+  }
+
+  private fitCamera() {
     // Only rays through facility receivers can contribute. Keep lateral bounds
     // tight; reserve the rider/jump margin along the light's depth axis only.
     const bounds=this.bounds.clone().applyMatrix4(this.camera.matrixWorldInverse).expandByScalar(.012);
@@ -50,8 +64,6 @@ export class SurfaceShadows {
     this.depthBiasNode.value=SURFACE_SHADOW_BIAS/(this.camera.far-this.camera.near);
     this.camera.updateProjectionMatrix();
     this.matrixNode.value.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
-    group.traverse(object=>{if(object instanceof THREE.Mesh)this.register(object,this.facilities,true);});
-    this.facilityDirty=this.babyDirty=true;
   }
 
   addBaby(mesh:THREE.Mesh) {this.register(mesh,this.baby,false);this.babyDirty=true;}
