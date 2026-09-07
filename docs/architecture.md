@@ -15,7 +15,7 @@ the only worker is the asynchronous optical-transport worker.
 | Character rendering | `src/graphics/baby.ts`, `baby-face.ts`, `face-skin.ts`, `face-expression.ts` | Render the body, attach the face to the deformed skin, and animate expression. |
 | Scene rendering | `renderer.ts`, `environment.ts`, `studio-light.ts`, `table.ts`, `composite.ts` | Configure WebGPU, load and edit the HDR lighting, draw the table, and apply the final image pipeline. |
 | Light transport | `refractive-light.js`, `transport.ts`, `transport.worker.ts` | Produce the GPU caustic field and asynchronous thickness/shadow fields. |
-| Facilities | `facilities.ts`, `swing-*`, `trampoline-*`, `bed-*`, `facility-shadows.ts` | Select and simulate interactive set pieces while sharing controls and shadow infrastructure. |
+| Facilities | `facilities.ts`, `swing-*`, `trampoline-*`, `bed-*`, `wearable-*`, `facility-shadows.ts` | Select and simulate interactive set pieces while sharing controls and shadow infrastructure. |
 | Input and sound | `input.ts`, `sound.ts`, `facility-sound.ts`, `flavor-picker.ts` | Translate pointer, keyboard, and touch input into simulation commands and generate procedural audio. |
 
 The runtime is intentionally not a second home for subsystem logic. It wires

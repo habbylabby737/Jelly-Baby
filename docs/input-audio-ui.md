@@ -51,6 +51,13 @@ constructs a horizontal basis, and gives the locomotion rig a normalized vector.
 `Space` queues a jump and `R` resets. `E` is reserved for facility interaction;
 `Escape` releases all grips.
 
+Near an available head-wearable slot, `E` uses the same shared facility route
+to wear the nearest item and the touch button reads `Wear <name>`. While an
+item is worn, the table interaction is hidden near the table and becomes
+`Press E to Take off <name>` / `Take off <name>` once the grounded baby has
+walked away. The ordinary Space jump also drives the wearable's short physics
+hop; facility-controlled motion and grabs do not.
+
 The touch joystick clamps its knob to a circular track and maps horizontal and
 vertical offsets to the same camera-relative movement vector. Its pointer is
 captured, reset to center on release, and cleared on blur or hidden-tab changes.

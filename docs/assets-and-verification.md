@@ -20,6 +20,7 @@ source and the verification suite exercises the same modules used by the game.
 | `public/og_image.png` | Social preview image referenced by `index.html`. | Authored presentation asset. |
 | `refs/jelly_baby_mesh.html` | Source implicit model and full-resolution polygonizer. | Reference/source input. |
 | `refs/jelly-webgpu.html` | Earlier standalone WebGPU soft-body reference and solver target. | Reference only; not loaded by the app. |
+| `refs/hat_assets.html` | Exact procedural flower crown, baseball cap, and top hat source constructors used by the dressing table. | Reference/source input. |
 | `refs/jelly_baby.jpeg` | Reference image. | Reference only. |
 
 ## Model generation
@@ -80,6 +81,7 @@ The scripts in `package.json` are the supported entry points:
 | `npm run test:swing` | Verify swing behavior and shared facility routing. |
 | `npm run test:trampoline` | Verify trampoline support, rebound, and transitions. |
 | `npm run test:bed` | Verify bed support, blanket settling, sleep/wake, and shadow registration. |
+| `npm run test:wearables` | Verify wearable geometry, slot selection, head hop, take-off, shadows, and table collision. |
 | `npm run test:blanket-shadows` | Reproduce curved-blanket shadow acne and verify receiver depths, real blockers, and caching. |
 | `npm run test:facility-collision` | Verify tight facility volumes, surface clearance, and pre-contact hints. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
@@ -118,6 +120,12 @@ rules.
 the trampoline's approach and boarding rules, supported compression, rebound
 height, airborne behavior, face threshold, frame collision, leave/reset, and
 facility lifecycle.
+
+[`scripts/verify-wearables.mjs`](../scripts/verify-wearables.mjs) checks the
+three reference asset roots for finite geometry and full shadow flags, verifies
+nearest-slot selection and reparenting, confirms the Space-triggered `.025 m`
+head hop and grounded take-off wording, and resolves a shallow approach against
+the table's simple collision box.
 
 [`scripts/verify-facility-collision.mjs`](../scripts/verify-facility-collision.mjs)
 walks the deformed surface into both facilities and checks that the visible skin
@@ -204,6 +212,7 @@ npm run typecheck
 npm run test:physics
 npm run test:swing
 npm run test:trampoline
+npm run test:wearables
 npm run test:facility-shadows
 npm run test:facility-sound
 npm run test:multitouch

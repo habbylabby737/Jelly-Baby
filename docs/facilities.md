@@ -95,6 +95,43 @@ beyond 15° does not inherit laughter: the seat must first return inside the
 normal-expression range and cross the threshold again. Reset and dismount
 clear it.
 
+## Head-wearable table
+
+[`src/game/wearable-facility.ts`](../src/game/wearable-facility.ts) and
+[`src/game/wearable-physics.ts`](../src/game/wearable-physics.ts) own the
+dressing table's interaction state, while
+[`src/graphics/wearable-table.ts`](../src/graphics/wearable-table.ts) owns the
+table and the three reference-derived assets. The table is placed at
+`(-.155, .205)` in the same lower-left authored quadrant as the supplied
+layout drawing. Its tabletop, legs, and apron use the swing frame's shared
+procedural timber material. All table and wearable meshes have both shadow
+flags enabled and are registered with the same facility ground and raised
+shadow systems.
+
+The three equally spaced slots are Floral Crown, Top Hat, and Baseball Cap.
+The asset constructors are kept in the graphics module with their geometry and
+TSL material details ported from `refs/hat_assets.html`; only their uniform
+root scales are tuned to the jelly's head. One simple collision box covers the
+whole table footprint and height. The collision is broad-phase gated near the
+table and resolved against the deformed visible-surface bindings after the
+soft-body solver, so the prompt can appear before physical contact without
+letting the body pass through the asset.
+
+When the body is grounded and ungrabbed within `.135 m` of an unoccupied slot,
+the nearest slot supplies `Wear <name>` to the shared desktop/touch prompt.
+The selected root is reparented to the baby group and driven by a top-surface
+cage anchor. A worn item is not an active facility, so ordinary movement and
+the camera remain available. After the body leaves the table approach radius,
+the worn item supplies `Take off <name>`; taking it off returns the same root to
+its original table slot. Reset returns every item to the table.
+
+The ordinary locomotion jump emits a dedicated `onJump` event after its Space
+impulse. While a wearable is held, that event launches only the wearable's
+relative one-dimensional hop: fixed-step gravity and an analytically chosen
+initial velocity target `.025 m` above the live head anchor, then settle it back
+onto the head. Facility boarding, trampoline bounces, grabs, and other motion
+never trigger this accessory hop.
+
 ## Trampoline
 
 ### Geometry

@@ -18,6 +18,8 @@ export class Locomotion {
   private lastImpact=-1;
   private lastStep=-1;
   onContact:(speed:number,foot:boolean)=>void=()=>{};
+  /** Emitted only when the ordinary locomotion jump actually launches. */
+  onJump:()=>void=()=>{};
   readonly body:SoftBody;
   constructor(body:SoftBody) {
     this.body=body;
@@ -77,6 +79,7 @@ export class Locomotion {
         const foot=Math.max(0,1-b.rest[i*3+1]/.035);
         v[i*3+1]+=.43+foot*.12;
       }
+      this.onJump();
       this.jumpCooldown=.24;
     }
     this.jumpQueued=false;

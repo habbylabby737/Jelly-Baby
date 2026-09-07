@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { positionLocal, vec3 } from 'three/tsl';
 import type { CollisionBox, CollisionMotion } from '../physics/facility-collision.ts';
 import { SWING } from '../game/swing-physics.ts';
+import { makeSwingWoodMaterial } from './wood-material.ts';
 
 /** A miniature joiner's swing: rounded timber, inset pegs and paired rope bridles. */
 export class Swing {
@@ -14,9 +14,7 @@ export class Swing {
   private readonly seatParts:{box:CollisionBox;x:number;y:number;z:number}[]=[];
   constructor() {
     this.group.position.set(SWING.x,0,SWING.z);
-    const timber=new THREE.MeshPhysicalNodeMaterial({color:'#bd9464',roughness:.48,clearcoat:.18});
-    const grain=positionLocal.x.mul(3400).add(positionLocal.y.mul(38).sin().mul(1.8)).sin().mul(.045).add(.955);
-    timber.colorNode=vec3(timber.color.r,timber.color.g,timber.color.b).mul(grain);
+    const timber=makeSwingWoodMaterial();
     const sage=new THREE.MeshPhysicalNodeMaterial({color:'#81915d',roughness:.4,clearcoat:.28});
     const brass=new THREE.MeshStandardNodeMaterial({color:'#ad8950',metalness:.75,roughness:.32});
     const rope=new THREE.MeshStandardNodeMaterial({color:'#ede0bb',roughness:.95});

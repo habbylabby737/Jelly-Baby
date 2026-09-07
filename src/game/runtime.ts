@@ -21,6 +21,7 @@ import { FacilityShadows } from '../graphics/facility-shadows.ts';
 import { LightingMode } from './lighting-mode.ts';
 import { BedFacility } from './bed-facility.ts';
 import { TrampolineFacility } from './trampoline-facility.ts';
+import { WearableFacility } from './wearable-facility.ts';
 
 export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   stage('Starting WebGPU');
@@ -45,6 +46,9 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const composite=createComposite(renderer,scene,camera);
   const rig=new Locomotion(body);
   const facilities=new Facilities();
+  const wearableTable=new WearableFacility(scene,body,baby.group,rig,facilityShadows);
+  rig.onJump=()=>wearableTable.jumpFromNormalLocomotion();
+  facilities.add(wearableTable);
   facilities.add(new SwingFacility(scene,body,facilityShadows,sound.facility));
   facilities.add(new TrampolineFacility(scene,body,facilityShadows,sound.facility));
   facilities.add(new BedFacility(scene,body,facilityShadows));

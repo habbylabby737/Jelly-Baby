@@ -17,7 +17,10 @@ facilities, and a deliberately measured optical treatment.
 - [Optical transport](optical-transport.md) — GPU caustics, worker-backed
   thickness/shadow transport, the optical proxy, and the approximation budget.
 - [Facilities](facilities.md) — the shared facility contract, swing,
-  trampoline, bed, collisions, facility shadows, and extension points.
+  trampoline, bed, head wearables, collisions, facility shadows, and
+  extension points.
+- [Head wearables](head-wearables.md) — the dressing table, reference hat
+  assets, interaction state, head attachment, and jump hop.
 - [Bed and sleeping](bed-and-sleeping.md) — reclining support, blanket physics,
   and sleepy facial performance.
 - [Input, audio, and UI](input-audio-ui.md) — desktop and touch controls,
