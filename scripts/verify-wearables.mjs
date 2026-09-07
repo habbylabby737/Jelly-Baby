@@ -57,6 +57,8 @@ facility.visual.group.traverse(object=>{
 });
 assert.deepEqual(facility.visual.items.map(item=>item.root.name),['floral-crown','top-hat','baseball-cap']);
 assert.deepEqual(HEAD_WEARABLES.map(item=>item.scale),[.016,.0144,.0125],'wearable scales match the tuned fit sizes');
+assert.deepEqual(HEAD_WEARABLES.map(item=>item.headLift),[-.0022,-.0003,.0038],'hat and cap use their fitted non-intersecting head heights');
+assert.deepEqual(HEAD_WEARABLES.map(item=>item.headForward),[0,0,-.0042],'baseball cap seating accounts for its built-in tilt instead of pushing the rear rim into the head');
 
 moveBody(body,WEARABLE_TABLE.x+HEAD_WEARABLES[0].slotX,WEARABLE_TABLE.z);
 assert.equal(facility.physics.availableIndex,0,'nearest slot is the floral crown');

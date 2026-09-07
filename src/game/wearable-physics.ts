@@ -15,8 +15,8 @@ export const WEARABLE_TABLE={
  */
 export const HEAD_WEARABLES=[
   {id:'floral-crown',label:'Floral Crown',slotX:-WEARABLE_TABLE.slotSpacing,scale:.016,tableLift:.0016,headLift:-.0022,headForward:0,headSide:0,rotationY:0},
-  {id:'top-hat',label:'Top Hat',slotX:0,scale:.0144,tableLift:.0008,headLift:-.0032,headForward:0,headSide:0,rotationY:0},
-  {id:'baseball-cap',label:'Baseball Cap',slotX:WEARABLE_TABLE.slotSpacing,scale:.0125,tableLift:.006,headLift:-.0025,headForward:.0038,headSide:0,rotationY:0},
+  {id:'top-hat',label:'Top Hat',slotX:0,scale:.0144,tableLift:.0008,headLift:-.0003,headForward:0,headSide:0,rotationY:0},
+  {id:'baseball-cap',label:'Baseball Cap',slotX:WEARABLE_TABLE.slotSpacing,scale:.0125,tableLift:.006,headLift:.0038,headForward:-.0042,headSide:0,rotationY:0},
 ] as const;
 
 export type HeadWearableIndex=0|1|2;

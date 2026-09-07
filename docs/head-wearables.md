@@ -11,8 +11,7 @@ The three table slots are equally spaced left-to-right: Floral Crown, Top Hat,
 and Baseball Cap. Their geometry and TSL materials are direct ports of the
 constructors in [`refs/hat_assets.html`](../refs/hat_assets.html). Their fitted
 uniform scales are now `.016` for the floral crown, `.0144` for the top hat,
-and `.0125` for the baseball cap, with matching table rests and worn offsets so
-each item actually seats on the jelly head instead of floating above it.
+and `.0125` for the baseball cap, with matching table rests and worn offsets so each item actually seats on the jelly head. The floral crown keeps its existing fit; the top hat is raised so the underside of its inner brim rests on the crown instead of cutting through it. The baseball cap also uses a corrected rearward seating offset that matches its built-in tilt, with the binding rim resting on the curved head surface instead of being buried in it.
 
 ## Interaction state
 
