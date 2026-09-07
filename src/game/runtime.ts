@@ -37,7 +37,8 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const body=new SoftBody(await loadBabyCage());
   const baby=new Baby(body);scene.add(baby.group);
   const optics=new RefractiveLightField(body.cage.opticalSurface,environment.incoming,ABSORPTION);
-  const facilityShadows=new FacilityShadows(environment.incoming);
+  const facilityShadows=new FacilityShadows(environment.incoming,environment.windowFraction);
+  facilityShadows.surfaces.addBaby(baby.mesh);
   const table=await makeTable(optics,environment,facilityShadows);scene.add(table.mesh);
   const composite=createComposite(renderer,scene,camera);
   const rig=new Locomotion(body);
@@ -76,6 +77,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   for(let i=0;i<80;i++){rig.step(PHYS.step);body.step(PHYS.step);}
   body.updateSurface();baby.update();input.update(1);
   facilityShadows.update(renderer);
+  facilityShadows.surfaces.update(renderer);
   optics.update(renderer,body,true);
   await transport.update();
   stage('Compiling the material');
@@ -103,6 +105,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
       }
       facilities.update();baby.update(dt,facilities.active?.laughing??false);
       facilityShadows.update(renderer);
+      facilityShadows.surfaces.update(renderer);
       input.update(dt);
       sound.listen(camera);
       transport.follow();

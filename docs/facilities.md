@@ -184,6 +184,26 @@ The table performs a deterministic 3×3 tent lookup of these channels. Its
 world-to-UV transform accounts for the WebGPU row direction explicitly; there
 is no camera-following shadow shimmer.
 
+`FacilityShadows.add` also registers every descendant mesh with
+[`SurfaceShadows`](../src/graphics/surface-shadows.ts). Two 2048² single-channel depth maps
+provide jelly-to-facility, facility self-shadowing, and facility-to-jelly
+occlusion. They share the measured window direction and fixed facility motion
+bounds with a 12 mm lateral margin and a 25 cm margin along the light depth
+axis for nearby riders. Keeping the lateral bounds tight avoids spending most
+of the texels on empty space. Facilities receive both maps;
+the jelly receives only facilities. The maps share visible geometry, track
+deformation and inherited visibility, and update only when their casters change.
+Each tap compares against depth extrapolated along the rasterized receiver
+plane, with a 0.2 mm bias converted to the fitted depth range. A single fixed
+receiver depth is insufficient: neighbouring texels on a tilted beam then
+incorrectly shadow the beam itself. The filter uses the ground shadow's exact
+3×3 tent weights and 1.5-ground-texel spacing, transformed from world X/Z into
+light UVs. Softness therefore stays consistent with the ground as depth-map
+resolution changes. Each of the nine lookups interpolates four depth comparisons
+so subtexel motion stays smooth. Depth itself is never linearly filtered across
+unrelated surfaces.
+This path leaves the existing table masks and caustics unchanged.
+
 ## Facility sound hooks
 
 Each facility owns a `FacilityMotionSound` instance and emits semantic events

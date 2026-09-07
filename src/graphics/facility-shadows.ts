@@ -1,10 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { float, positionWorld, uniform, vec3 } from 'three/tsl';
+import { SurfaceShadows } from './surface-shadows.ts';
 
 /** Fixed-world planar occlusion for opaque facilities under the measured window.
  * Geometry is shared with the visible objects; shadows never overlay the table.
  */
 export class FacilityShadows {
+  readonly surfaces:SurfaceShadows;
   readonly target=new THREE.RenderTarget(512,512,{depthBuffer:false,samples:4});
   readonly originNode=uniform(new THREE.Vector2());
   readonly spanNode=uniform(new THREE.Vector2(1,1));
@@ -19,8 +21,9 @@ export class FacilityShadows {
   private readonly bounds=new THREE.Box2();
   private readonly casters:{source:THREE.Mesh;shadow:THREE.Mesh;contact:THREE.Mesh;matrix:THREE.Matrix4;positionVersion:number}[]=[];
   private dirty=true;
-  constructor(incoming:THREE.Vector3) {
+  constructor(incoming:THREE.Vector3,windowFraction:number) {
     if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
+    this.surfaces=new SurfaceShadows(incoming,windowFraction);
     const x=incoming.x/incoming.y,z=incoming.z/incoming.y,floor=-.00005;
     // Project onto the tabletop along incoming light, then put world X/Z in
     // shadow-camera X/Y. Fixed bounds avoid camera-following texel shimmer.
@@ -37,6 +40,7 @@ export class FacilityShadows {
   }
   /** Bounds must include the facility's entire motion envelope, in world metres. */
   add(group:THREE.Group,envelope:THREE.Box3) {
+    this.surfaces.add(group,envelope);
     group.updateWorldMatrix(true,true);
     const p=new THREE.Vector3();
     for(const x of [envelope.min.x,envelope.max.x])for(const y of [envelope.min.y,envelope.max.y])for(const z of [envelope.min.z,envelope.max.z]) {
@@ -45,6 +49,7 @@ export class FacilityShadows {
     }
     const padded=this.bounds.clone().expandByScalar(.012),span=padded.getSize(new THREE.Vector2());
     this.originNode.value.copy(padded.min);this.spanNode.value.copy(span);
+    this.surfaces.setGroundFootprint(span);
     // WebGPU raster rows run downward: UV.v = 1 - normalized world Z.
     // WGSLNodeBuilder.isFlipY() is false in the pinned Three version, so the
     // texture node does NOT supply this conversion. Keep the actual lookup
@@ -87,5 +92,5 @@ export class FacilityShadows {
       this.dirty=false;
     } finally {renderer.setRenderTarget(previous);renderer.autoClear=autoClear;}
   }
-  dispose() {this.scene.clear();this.casters.length=0;this.material.dispose();this.contactMaterial.dispose();this.target.dispose();}
+  dispose() {this.surfaces.dispose();this.scene.clear();this.casters.length=0;this.material.dispose();this.contactMaterial.dispose();this.target.dispose();}
 }

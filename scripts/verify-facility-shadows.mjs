@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { Box3, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
+import { Box3, BoxGeometry, Group, Mesh, MeshPhysicalNodeMaterial, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
+import { SurfaceShadows, SURFACE_SHADOW_SIZE, SURFACE_SHADOW_BIAS } from '../src/graphics/surface-shadows.ts';
 import { FacilityShadows } from '../src/graphics/facility-shadows.ts';
 import { Swing } from '../src/graphics/swing.ts';
 import { SWING } from '../src/game/swing-physics.ts';
@@ -7,7 +8,7 @@ import { Trampoline } from '../src/graphics/trampoline.ts';
 import { TRAMPOLINE } from '../src/game/trampoline-physics.ts';
 
 const incoming=new Vector3(.494,-.748,-.443).normalize();
-const shadows=new FacilityShadows(incoming),swing=new Swing();
+const shadows=new FacilityShadows(incoming,.7),swing=new Swing();
 shadows.add(swing.group,new Box3(new Vector3(SWING.x-.10,0,SWING.z-.15),new Vector3(SWING.x+.10,SWING.height+.02,SWING.z+.15)));
 const visible=[];swing.group.traverse(object=>{if(object.isMesh)visible.push(object);});
 assert(visible.every(mesh=>!mesh.material.transparent),'no coplanar transparent shadow overlays remain');
@@ -97,3 +98,96 @@ assert(oldMappingError>.25,'this regression detects the previous vertically mirr
 trampoline.dispose();
 shadows.dispose();swing.dispose();
 console.log('Full facility projection, WebGPU table lookup, swept bounds, idle caching and render-state restoration passed',{projectionChecks,oldMappingError});
+
+// Raised receivers need depth ordering, not a floor-projected silhouette.
+const surfaces=new SurfaceShadows(incoming,.7),group=new Group();
+const caster=new Mesh(new BoxGeometry(.01,.01,.01),new MeshPhysicalNodeMaterial());
+caster.position.set(0,.15,0);group.add(caster);
+const receiver=caster.clone();receiver.material=caster.material.clone();
+receiver.position.copy(caster.position).addScaledVector(incoming,.08);group.add(receiver);
+surfaces.add(group,new Box3().setFromObject(group));
+const jelly=new Mesh(new BoxGeometry(.02,.04,.02),new MeshPhysicalNodeMaterial({transmission:1}));
+jelly.position.copy(caster.position).addScaledVector(incoming,.04);surfaces.addBaby(jelly);
+surfaces.setGroundFootprint(shadows.spanNode.value);
+const centre=new Vector3(0,.05,0).applyMatrix4(surfaces.matrixNode.value);
+for(const [axis,span,step] of [[new Vector3(1,0,0),shadows.spanNode.value.x,surfaces.filterXNode.value],
+  [new Vector3(0,0,1),shadows.spanNode.value.y,surfaces.filterZNode.value]]) {
+  const shifted=new Vector3(0,.05,0).addScaledVector(axis,span*1.5/512).applyMatrix4(surfaces.matrixNode.value);
+  assert(Math.abs((shifted.x-centre.x)*.5-step.x)<1e-12);
+  assert(Math.abs((shifted.y-centre.y)*-.5-step.y)<1e-12,'surface tent spacing matches the ground filter in world metres');
+}
+const passes=[];
+renderer.render=(scene,camera)=>{
+  scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+  passes.push(scene);
+  for(const proxy of scene.children) {
+    const world=new Vector3().setFromMatrixPosition(proxy.matrixWorld);
+    const clip=world.clone().project(camera);
+    const lookup=world.clone().applyMatrix4(surfaces.matrixNode.value);
+    assert(clip.distanceTo(lookup)<1e-10,'receiver lookup uses the exact depth-raster camera');
+    assert(Math.abs(clip.x)<1&&Math.abs(clip.y)<1&&clip.z>0&&clip.z<1,'raised surfaces fit the depth volume');
+  }
+  const front=caster.position.clone().project(camera),back=receiver.position.clone().project(camera);
+  assert(Math.abs(front.x-back.x)<1e-10&&Math.abs(front.y-back.y)<1e-10,'points along incoming light share a shadow texel');
+  assert(back.z>front.z+.0003,'the downstream surface receives a shadow with the configured depth bias');
+};
+surfaces.update(renderer);assert.equal(passes.length,2);
+assert(caster.material.aoNode&&receiver.material.aoNode&&jelly.material.aoNode,'all raised materials receive indirect-light occlusion');
+for(const mesh of [caster,receiver,jelly])assert.equal(mesh.material.outputNode,null,'shadowing never overrides the final material output');
+assert.equal(jelly.material.transmission,1,'jelly transmission remains intact');
+surfaces.update(renderer);assert.equal(passes.length,2,'idle raised maps are cached');
+jelly.geometry.attributes.position.needsUpdate=true;surfaces.update(renderer);
+assert.equal(passes.length,3);assert.equal(passes.at(-1),surfaces.baby,'jelly deformation updates only the jelly depth map');
+group.visible=false;surfaces.update(renderer);
+assert.equal(passes.length,4);assert(passes.at(-1).children.every(mesh=>!mesh.visible),'hidden parent removes facility casters');
+group.visible=true;surfaces.update(renderer);
+receiver.position.y+=.001;
+renderer.render=()=>{throw new Error('raised shadow failure');};
+assert.throws(()=>surfaces.update(renderer),/raised shadow failure/);
+assert.equal(renderer.target,originalTarget);assert.equal(renderer.autoClear,false);
+surfaces.dispose();caster.geometry.dispose();jelly.geometry.dispose();
+for(const mesh of [caster,receiver,jelly])mesh.material.dispose();
+console.log('Raised shadow depth ordering, receiver registration, deformation caching, inherited visibility and failure restoration passed');
+
+// Numerical raster regression: the old fixed-depth PCF marks a sloped plane
+// as its own blocker. Test subtexel motion, steep slopes, real blockers, and
+// continuous filtering across texel boundaries without requiring a dev server.
+const size=SURFACE_SHADOW_SIZE,bias=SURFACE_SHADOW_BIAS;
+function samplePlane(u,v,slope,blocker=()=>0,corrected=true) {
+  const depthAt=(x,y)=>.5+slope[0]*(x-.5)+slope[1]*(y-.5);
+  let shadow=0;
+  for(let y=-1;y<=1;y++)for(let x=-1;x<=1;x++) {
+    const pixel=[u*size+x*1.5-.5,v*size+y*1.5-.5],base=pixel.map(Math.floor),fraction=pixel.map((p,i)=>p-base[i]);
+    for(let by=0;by<=1;by++)for(let bx=0;bx<=1;bx++) {
+    const tu=(base[0]+bx+.5)/size,tv=(base[1]+by+.5)/size;
+    const stored=depthAt(tu,tv)-blocker(tu,tv);
+    const reference=depthAt(u,v)+(corrected?slope[0]*(tu-u)+slope[1]*(tv-v):0)-bias;
+    const weight=(bx?fraction[0]:1-fraction[0])*(by?fraction[1]:1-fraction[1])*(x===0?2:1)*(y===0?2:1)/16;
+    shadow+=(reference>stored?1:0)*weight;
+    }
+  }
+  return shadow;
+}
+let acneSamples=0;
+for(const slope of [[0,0],[.4,-.7],[2,1],[-8,3],[12,-9]]) {
+  // Receiver-plane derivatives in screen space, including a rotated UV basis.
+  const dx=[.0003,.0001],dy=[-.0002,.0005],dz=[slope[0]*dx[0]+slope[1]*dx[1],slope[0]*dy[0]+slope[1]*dy[1]];
+  const det=dx[0]*dy[1]-dx[1]*dy[0];
+  const gradient=[(dy[1]*dz[0]-dx[1]*dz[1])/det,(dx[0]*dz[1]-dy[0]*dz[0])/det];
+  assert(gradient.every((value,i)=>Math.abs(value-slope[i])<1e-10),'receiver-plane solve recovers slopes independently of the viewing angle');
+  for(let step=0;step<=100;step++) {
+    const u=.5+(step/100-.5)/size,v=.5+(step/137-.5)/size;
+    assert.equal(samplePlane(u,v,gradient),0,'an unblocked tilted surface stays completely unshadowed through subtexel motion');
+    assert(Math.abs(samplePlane(u,v,gradient,()=>.001)-1)<1e-12,'a separate blocker one millimetre ahead still casts a complete shadow');
+    if(samplePlane(u,v,gradient,()=>0,false)>.01)acneSamples++;
+  }
+}
+assert(acneSamples>100,'the regression exposes acne from the previous centre-depth comparison');
+let last=0,maxStep=0;
+for(let step=0;step<=2000;step++) {
+  const shadow=samplePlane(.5+(step/500-2)/size,.5,[0,0],u=>u>=.5?.01:0);
+  assert(shadow>=last-1e-12,'a straight shadow edge stays monotonic while crossing texels');
+  maxStep=Math.max(maxStep,Math.abs(shadow-last));last=shadow;
+}
+assert.equal(last,1);assert(maxStep<.002,'bilinear comparison weights remove nearest-texel jumps at shadow edges');
+console.log('Sloped-plane acne and continuous shadow-edge regression passed',{acneSamples,maxStep});

@@ -63,6 +63,14 @@ The environment contributes general illumination through PMREM. The table's
 window occlusion and transmitted flux are added as a measured local correction,
 not as a second point or directional light that would double the window.
 
+Raised surfaces use separate light-space depth maps for facilities and the
+deformed jelly. Visibility enters the physical material's `aoNode` as a
+normal-weighted approximation of the blocked window contribution. Three applies
+this to indirect diffuse, specular, and clearcoat lighting; the final output and
+transmitted background are not multiplied by a shadow mask. This preserves the
+jelly's refraction and avoids a dark painted-on layer. No second light is added.
+The jelly receives only the facility map, keeping its existing self-shading intact.
+
 ## Table material
 
 [`src/graphics/table.ts`](../src/graphics/table.ts) loads three wood maps:
