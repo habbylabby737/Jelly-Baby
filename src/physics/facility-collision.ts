@@ -2,6 +2,11 @@ import type { SoftBody } from './soft-body.js';
 
 type PointLike={x:number;y:number;z:number};
 
+function separatedOnAxis(dx:number,dy:number,dz:number,rx:number,ry:number,rz:number,axis:PointLike,extent:number) {
+  return Math.abs(dx*axis.x+dy*axis.y+dz*axis.z)>
+    extent+rx*Math.abs(axis.x)+ry*Math.abs(axis.y)+rz*Math.abs(axis.z);
+}
+
 /** Optional finite-mass response for a moving collision volume. */
 export interface CollisionMotion {
   velocityAt(x:number,y:number,z:number,out:PointLike):void;
@@ -36,6 +41,11 @@ export class FacilityCollision {
   private readonly denominators:Float64Array;
   private readonly point=new Float64Array(3);
   private readonly motionVelocity:PointLike={x:0,y:0,z:0};
+  private readonly bounds=new Float64Array(6);
+  private readonly candidates:CollisionBox[]=[];
+  private readonly candidateIndices:number[]=[];
+  private maxWeightMagnitude=0;
+  private maxWeightSumError=0;
 
   constructor(body:SoftBody,spacing=FACILITY_COLLISION_SAMPLE_SPACING) {
     this.body=body;
@@ -59,10 +69,14 @@ export class FacilityCollision {
     for(let sample=0;sample<this.sampleCount;sample++) {
       const offset=this.vertices[sample]*4;
       let denominator=0;
+      let magnitude=0,sum=0;
       for(let k=0;k<4;k++) {
         const id=this.bindingIds[offset+k],weight=this.bindingWeights[offset+k];
         denominator+=body.inverseMass[id]*weight*weight;
+        magnitude+=Math.abs(weight);sum+=weight;
       }
+      this.maxWeightMagnitude=Math.max(this.maxWeightMagnitude,magnitude);
+      this.maxWeightSumError=Math.max(this.maxWeightSumError,Math.abs(sum-1));
       this.denominators[sample]=denominator;
     }
   }
@@ -70,12 +84,30 @@ export class FacilityCollision {
   /** Resolve tight oriented boxes, such as the swing's timber frame pieces. */
   resolveBoxes(boxes:readonly CollisionBox[],margin=FACILITY_COLLISION_MARGIN) {
     if(!boxes.length)return false;
+    this.findCandidates(boxes,margin);
+    if(!this.candidates.length)return false;
+    return this.resolveBoxContacts(boxes,margin);
+  }
+
+  private findCandidates(boxes:readonly CollisionBox[],margin:number) {
+    this.updateBounds();
+    let count=0;
+    for(let i=0;i<boxes.length;i++) {
+      const overlaps=this.overlapsBox(boxes[i],margin);
+      if(overlaps){this.candidates[count]=boxes[i];this.candidateIndices[count++]=i;}
+    }
+    this.candidates.length=count;this.candidateIndices.length=count;
+  }
+
+  private resolveBoxContacts(boxes:readonly CollisionBox[],margin:number) {
+    let activeBoxes:readonly CollisionBox[]=this.candidates;
     let changed=false;
     for(let iteration=0;iteration<COLLISION_ITERATIONS;iteration++) {
       let iterationChanged=false;
       for(let sample=0;sample<this.sampleCount;sample++) {
         this.readSample(sample);
-        for(const box of boxes) {
+        for(let boxIndex=0;boxIndex<activeBoxes.length;boxIndex++) {
+          const box=activeBoxes[boxIndex];
           const dx=this.point[0]-box.center.x,dy=this.point[1]-box.center.y,dz=this.point[2]-box.center.z;
           const qx=dx*box.xAxis.x+dy*box.xAxis.y+dz*box.xAxis.z;
           const hx=box.halfSize.x+margin,hy=box.halfSize.y+margin,hz=box.halfSize.z+margin;
@@ -94,6 +126,9 @@ export class FacilityCollision {
           if(side<0){nx=-nx;ny=-ny;nz=-nz;}
           this.applyContact(sample,box,nx,ny,nz,depth);changed=true;iterationChanged=true;
           this.readSample(sample);
+          // Resume at the next original box, including initially rejected
+          // pieces that this contact may have pushed the sample into.
+          if(activeBoxes!==boxes){boxIndex=this.candidateIndices[boxIndex];activeBoxes=boxes;}
         }
       }
       if(!iterationChanged)break;
@@ -110,15 +145,24 @@ export class FacilityCollision {
   resolveCylinderBarrier(centerX:number,centerZ:number,radius:number,minY:number,maxY:number,margin=FACILITY_COLLISION_MARGIN) {
     const boundary=radius+margin;
     const boundarySquared=boundary*boundary;
+    this.updateBounds();
+    if(!this.overlaps(centerX-boundary,minY,centerZ-boundary,centerX+boundary,maxY,centerZ+boundary))return false;
+    const dx=Math.max(this.bounds[0]-centerX,0,centerX-this.bounds[3]);
+    const dz=Math.max(this.bounds[2]-centerZ,0,centerZ-this.bounds[5]);
+    if(dx*dx+dz*dz>boundarySquared)return false;
     let changed=false;
-    for(let iteration=0;iteration<COLLISION_ITERATIONS;iteration++)for(let sample=0;sample<this.sampleCount;sample++) {
-      this.readSample(sample);
-      if(this.point[1]<=minY||this.point[1]>=maxY)continue;
-      const x=this.point[0]-centerX,z=this.point[2]-centerZ,distanceSquared=x*x+z*z;
-      if(distanceSquared>=boundarySquared)continue;
-      const distance=Math.sqrt(distanceSquared);
-      const nx=distance<1e-9?1:x/distance,nz=distance<1e-9?0:z/distance;
-      this.applyContact(sample,undefined,nx,0,nz,boundary-distance);changed=true;
+    for(let iteration=0;iteration<COLLISION_ITERATIONS;iteration++) {
+      let iterationChanged=false;
+      for(let sample=0;sample<this.sampleCount;sample++) {
+        this.readSample(sample);
+        if(this.point[1]<=minY||this.point[1]>=maxY)continue;
+        const x=this.point[0]-centerX,z=this.point[2]-centerZ,distanceSquared=x*x+z*z;
+        if(distanceSquared>=boundarySquared)continue;
+        const distance=Math.sqrt(distanceSquared);
+        const nx=distance<1e-9?1:x/distance,nz=distance<1e-9?0:z/distance;
+        this.applyContact(sample,undefined,nx,0,nz,boundary-distance);changed=true;iterationChanged=true;
+      }
+      if(!iterationChanged)break;
     }
     this.finish(changed);
     return changed;
@@ -132,6 +176,47 @@ export class FacilityCollision {
       px+=x[j]*weight;py+=x[j+1]*weight;pz+=x[j+2]*weight;
     }
     this.point[0]=px;this.point[1]=py;this.point[2]=pz;
+  }
+
+  /** Bound the current bindings without reconstructing the dense surface.
+   * Signed/extrapolating weights are supported: the cage radius is multiplied
+   * by the largest absolute weight sum, with a separate partition-error term.
+   * Never cache across calls: the solver and other facilities mutate body.x.
+   */
+  private updateBounds() {
+    const x=this.body.x,b=this.bounds;
+    b[0]=b[1]=b[2]=Infinity;b[3]=b[4]=b[5]=-Infinity;
+    for(let i=0;i<x.length;i+=3) {
+      for(let axis=0;axis<3;axis++) {
+        const value=x[i+axis];
+        if(value<b[axis])b[axis]=value;
+        if(value>b[axis+3])b[axis+3]=value;
+      }
+    }
+    for(let axis=0;axis<3;axis++) {
+      const center=(b[axis]+b[axis+3])*.5;
+      const radius=(b[axis+3]-b[axis])*.5*this.maxWeightMagnitude+
+        Math.abs(center)*this.maxWeightSumError;
+      // Outward padding covers floating-point binding and OBB-axis roundoff.
+      const pad=1e-10*(1+Math.abs(center)+radius);
+      b[axis]=center-radius-pad;b[axis+3]=center+radius+pad;
+    }
+  }
+
+  private overlaps(minX:number,minY:number,minZ:number,maxX:number,maxY:number,maxZ:number) {
+    const b=this.bounds;
+    return !(b[3]<minX||b[0]>maxX||b[4]<minY||b[1]>maxY||b[5]<minZ||b[2]>maxZ);
+  }
+
+  private overlapsBox(box:CollisionBox,margin:number) {
+    const b=this.bounds;
+    const dx=(b[0]+b[3])*.5-box.center.x,dy=(b[1]+b[4])*.5-box.center.y,dz=(b[2]+b[5])*.5-box.center.z;
+    const rx=(b[3]-b[0])*.5,ry=(b[4]-b[1])*.5,rz=(b[5]-b[2])*.5;
+    // Project the cage enclosure onto exactly the axes used by the narrow
+    // phase. No assumption about perfectly orthonormal floating-point axes.
+    return !separatedOnAxis(dx,dy,dz,rx,ry,rz,box.xAxis,box.halfSize.x+margin)&&
+      !separatedOnAxis(dx,dy,dz,rx,ry,rz,box.yAxis,box.halfSize.y+margin)&&
+      !separatedOnAxis(dx,dy,dz,rx,ry,rz,box.zAxis,box.halfSize.z+margin);
   }
 
   private applyContact(sample:number,box:CollisionBox|undefined,nx:number,ny:number,nz:number,depth:number) {

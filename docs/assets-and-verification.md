@@ -84,6 +84,7 @@ The scripts in `package.json` are the supported entry points:
 | `npm run test:wearables` | Verify wearable geometry, swap/take-off routing, head-frame fit, bed return, shadow sync, and table collision. |
 | `npm run test:blanket-shadows` | Reproduce curved-blanket shadow acne and verify receiver depths, real blockers, and caching. |
 | `npm run test:facility-collision` | Verify tight facility volumes, surface clearance, and pre-contact hints. |
+| `npm run test:collision-broadphase` | Compare optimized and exhaustive contacts exactly, verify safe rejection/contact chains, and measure collision CPU cost. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
 | `npm run test:facility-sound` | Verify motion-event timing and procedural audio. |
 | `npm run test:multitouch` | Verify simultaneous grips and cleanup paths. |
